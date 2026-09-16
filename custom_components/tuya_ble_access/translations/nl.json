@@ -1,0 +1,687 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tuya BLE Access instellen",
+        "menu_options": {
+          "cloud": "Tuya Cloud-account",
+          "local": "Lokale verbindingsgegevens"
+        }
+      },
+      "local": {
+        "title": "Een al gekoppeld slot importeren",
+        "description": "Voer de Bluetooth-verbindingsgegevens in van een slot dat al gekoppeld is. De integratie slaat deze lokaal op en maakt geen verbinding met Tuya Cloud.",
+        "data": {
+          "name": "Naam van het slot",
+          "device_mac": "Bluetooth-MAC-adres",
+          "device_uuid": "Apparaat-UUID",
+          "device_id": "Apparaat-ID",
+          "product_id": "Apparaatprofiel",
+          "local_key": "Lokale sleutel",
+          "sec_key": "Beveiligingssleutel",
+          "verify_key": "Verificatiesleutel",
+          "auth_key": "Versleutelde authenticatiesleutel",
+          "auth_random": "Willekeurige authenticatiewaarde",
+          "check_code": "Controlecode"
+        }
+      },
+      "select_country": {
+        "title": "Land selecteren",
+        "description": "Selecteer je land om de Tuya Cloud-regio en landcode automatisch in te stellen.",
+        "data": {
+          "country": "Land"
+        }
+      },
+      "cloud_login": {
+        "title": "Tuya Cloud-accountgegevens",
+        "description": "Voer je accountgegevens van Tuya Smart of Smart Life in om de versleutelingssleutels van je sloten op te halen.\n\nDatacentrum: {region}",
+        "data": {
+          "email": "E-mailadres",
+          "password": "Wachtwoord",
+          "country_code": "Landcode (bijv. 31)",
+          "region": "Cloud-regio"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Tuya-account opnieuw aanmelden",
+        "description": "Voer het Tuya-wachtwoord voor {email} opnieuw in. Hiermee worden ook de Bluetooth-sleutels van alle opgeslagen sloten vernieuwd. Gebruik dit nadat je een slot opnieuw hebt gekoppeld in de Tuya-app.",
+        "data": {
+          "password": "Wachtwoord",
+          "tuya_country_code": "Landcode",
+          "tuya_region": "Cloud-regio"
+        }
+      },
+      "reconfigure": {
+        "title": "Tuya-account opnieuw instellen",
+        "description": "Voer je Tuya Cloud-accountgegevens in. Het huidige e-mailadres is vooraf ingevuld; pas het aan als je een ander account gebruikt. Bij een lokaal ingestelde hub worden ook landcode en regio gevraagd. De Bluetooth-sleutels van alle sloten op de hub worden vernieuwd. Gebruik dit na opnieuw koppelen in de Tuya-app.",
+        "data": {
+          "email": "E-mailadres",
+          "password": "Wachtwoord",
+          "tuya_country_code": "Landcode",
+          "tuya_region": "Cloud-regio"
+        }
+      },
+      "confirm_new_device": {
+        "title": "Nieuw slot gevonden",
+        "description": "Er is een nieuw Tuya BLE-slot gevonden: {name} ({mac}). Herstel de fabrieksinstellingen van het slot en activeer het zodat het een Bluetooth-signaal blijft uitzenden. Verzend daarna dit formulier om het lokaal via Bluetooth te activeren. Houd het slot dicht bij een Bluetooth-adapter of -proxy van Home Assistant."
+      },
+      "migrate": {
+        "title": "Bestaande integratie overnemen",
+        "description": "Neem de bestaande Tuya BLE Lock-hub over. Apparaten, entiteit-ID’s, lokale sleutels en ingeleerde credentials blijven behouden. De oude integratie wordt verwijderd. Acties en events in automatiseringen moet je wijzigen van tuya_ble_lock naar tuya_ble_access. Maak eerst een Home Assistant-back-up."
+      }
+    },
+    "error": {
+      "auth_key_failed": "Kan geen verbinding maken met Tuya Cloud. Controleer je accountgegevens, land en regio.",
+      "activation_seed_missing": "Tuya Cloud heeft niet alle gegevens voor lokale activering geleverd. Controleer of het slot bij dit account hoort, herstel de fabrieksinstellingen en activeer het slot voordat je het opnieuw probeert.",
+      "bluetooth_unavailable": "Het slot is momenteel niet bereikbaar via lokale Bluetooth. Activeer het, houd het dicht bij een Bluetooth-adapter of -proxy van Home Assistant en probeer het opnieuw.",
+      "device_already_bound": "Het slot meldt dat het al gekoppeld is. Herstel de fabrieksinstellingen, activeer het slot en probeer opnieuw lokaal te koppelen.",
+      "pairing_failed": "Het slot heeft de lokale Bluetooth-koppeling niet geaccepteerd of voltooid. Controleer of de fabrieksinstellingen zijn hersteld, activeer het slot en probeer het opnieuw.",
+      "bind_verification_failed": "De Bluetooth-koppeling is voltooid, maar kon niet worden geverifieerd. Houd het slot actief en dichtbij en probeer het opnieuw.",
+      "activation_cloud_fetch_failed": "Kan de activeringsgegevens niet ophalen uit Tuya Cloud. Controleer de netwerkverbinding en accountinstellingen.",
+      "activation_storage_unavailable": "De lokale opslag van verbindingsgegevens is niet beschikbaar. De activering is daarom niet gestart. Probeer het later opnieuw.",
+      "activation_credentials_not_saved": "Het slot is mogelijk al gekoppeld, maar de verbindingsgegevens konden na activering niet worden opgeslagen of geladen. Probeer het opnieuw. Stel de integratie opnieuw in als het probleem aanhoudt.",
+      "activation_failed": "De lokale Bluetooth-activering kon niet worden voltooid. Activeer het slot en probeer het opnieuw. Stel de integratie opnieuw in als het probleem aanhoudt.",
+      "integration_changed": "De Tuya BLE Access-integratie is gewijzigd terwijl deze bevestiging openstond. Start de Bluetooth-detectie opnieuw.",
+      "invalid_local_credentials": "De lokale verbindingsgegevens zijn onvolledig of ongeldig. Controleer het MAC-adres, de sleutellengtes, hexadecimale waarden en de achtcijferige controlecode.",
+      "local_storage_unavailable": "De lokale verbindingsgegevens van het slot konden niet worden opgeslagen. Probeer het opnieuw.",
+      "invalid_country": "Selecteer een geldig land."
+    },
+    "abort": {
+      "already_configured": "Dit slot is al ingesteld.",
+      "single_instance_allowed": "Er is al een Tuya BLE Access-hub ingesteld. Nieuwe sloten worden automatisch toegevoegd via Bluetooth-detectie.",
+      "device_added": "Het slot is toegevoegd en verschijnt zo meteen.",
+      "missing_credentials": "De hub heeft geen cloud-accountgegevens. Stel de integratie opnieuw in.",
+      "cloud_fetch_failed": "Kan de apparaatgegevens niet ophalen uit Tuya Cloud. Het slot is mogelijk niet gekoppeld aan je Tuya-app-account.",
+      "reauth_successful": "Opnieuw aanmelden is gelukt. De Bluetooth-sleutels van alle sloten zijn vernieuwd.",
+      "local_entry_no_reconfigure": "Deze hub gebruikt lokale verbindingsgegevens en heeft geen Tuya Cloud-account om opnieuw in te stellen.",
+      "not_a_lock": "Dit Tuya-apparaat is geen slot en is daarom niet toegevoegd.",
+      "legacy_migration_unavailable": "Migratie vereist precies één ingeschakelde Tuya BLE Lock-hub met configuratieversie 2. Werk de oude integratie eerst bij en schakel de hub in."
+    }
+  },
+  "entity": {
+    "lock": {
+      "lock": {
+        "name": "Slot"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Batterij"
+      },
+      "battery_state": {
+        "name": "Batterijstatus"
+      },
+      "door": {
+        "name": "Deur",
+        "state": {
+          "unknown": "Onbekend",
+          "open": "Open",
+          "closed": "Gesloten"
+        }
+      },
+      "credentials": {
+        "name": "Toegangsmiddelen"
+      },
+      "last_unlock_time": {
+        "name": "Laatste ontgrendelingstijd"
+      },
+      "last_alarm_time": {
+        "name": "Laatste alarmtijd"
+      },
+      "last_unlock_by": {
+        "name": "Laatst ontgrendeld door"
+      },
+      "last_unlock_credential": {
+        "name": "Laatst gebruikt toegangsmiddel"
+      },
+      "last_unlock": {
+        "name": "Laatste ontgrendeling",
+        "state": {
+          "fingerprint": "Vingerafdruk",
+          "password": "Pincode",
+          "dynamic_code": "Dynamische code",
+          "card": "NFC-kaart",
+          "mechanical_key": "Mechanische sleutel",
+          "bluetooth": "Bluetooth",
+          "temporary_code": "Tijdelijke code",
+          "remote_phone": "Op afstand (telefoon)",
+          "remote_voice": "Op afstand (spraak)",
+          "offline_code": "Offlinecode"
+        }
+      },
+      "lock_alarm": {
+        "name": "Slotalarm",
+        "state": {
+          "wrong_finger": "Onjuiste vingerafdruk",
+          "wrong_password": "Onjuiste pincode",
+          "wrong_card": "Onjuiste kaart",
+          "wrong_face": "Onjuist gezicht",
+          "tongue_bad": "Grendel geblokkeerd",
+          "too_hot": "Oververhit",
+          "unclosed_time": "Te lang open",
+          "tongue_not_out": "Grendel niet uitgeschoven",
+          "pry": "Openbreekpoging",
+          "key_in": "Sleutel in het slot",
+          "low_battery": "Batterij bijna leeg",
+          "power_off": "Uitgeschakeld",
+          "shock": "Schok gedetecteerd",
+          "defense": "Bewakingsmodus"
+        }
+      }
+    },
+    "switch": {
+      "auto_lock": {
+        "name": "Automatisch vergrendelen"
+      },
+      "double_lock": {
+        "name": "Privacyvergrendeling"
+      },
+      "passage_mode": {
+        "name": "Doorgangsmodus"
+      },
+      "persistent_connection": {
+        "name": "Verbinding aanhouden"
+      }
+    },
+    "select": {
+      "volume": {
+        "name": "Toetsenbordgeluid",
+        "state": {
+          "mute": "Stil",
+          "low": "Laag",
+          "normal": "Normaal",
+          "high": "Hoog"
+        }
+      },
+      "language": {
+        "name": "Taal van het slot",
+        "state": {
+          "chinese_simplified": "Chinees (vereenvoudigd)",
+          "english": "Engels"
+        }
+      },
+      "unlock_mode": {
+        "name": "Ontgrendelingsmodus",
+        "state": {
+          "single_unlock": "Eén toegangsmiddel",
+          "finger_password": "Vingerafdruk en pincode",
+          "finger_card": "Vingerafdruk en kaart",
+          "password_card": "Pincode en kaart"
+        }
+      }
+    },
+    "number": {
+      "auto_lock_time": {
+        "name": "Vertraging automatisch vergrendelen"
+      }
+    },
+    "button": {
+      "report_factory_reset": {
+        "name": "Slot is gereset"
+      },
+      "refresh": {
+        "name": "Status lokaal vernieuwen"
+      },
+      "cloud_refresh": {
+        "name": "Status via cloud vernieuwen"
+      }
+    },
+    "binary_sensor": {
+      "doorbell": {
+        "name": "Deurbel"
+      },
+      "hijack": {
+        "name": "Dwangalarm"
+      },
+      "message": {
+        "name": "Bericht"
+      }
+    }
+  },
+  "selector": {
+    "credential_type": {
+      "options": {
+        "pin": "Pincode",
+        "fingerprint": "Vingerafdruk",
+        "card": "Kaart"
+      }
+    },
+    "finger": {
+      "options": {
+        "right_thumb": "Rechterduim",
+        "right_index": "Rechterwijsvinger",
+        "right_middle": "Rechtermiddelvinger",
+        "right_ring": "Rechterringvinger",
+        "right_pinky": "Rechterpink",
+        "left_thumb": "Linkerduim",
+        "left_index": "Linkerwijsvinger",
+        "left_middle": "Linkermiddelvinger",
+        "left_ring": "Linkerringvinger",
+        "left_pinky": "Linkerpink"
+      }
+    },
+    "region": {
+      "options": {
+        "eu": "Europa (EU)",
+        "us": "Amerika (US)",
+        "cn": "China (CN)",
+        "in": "India (IN)"
+      }
+    },
+    "country": {
+      "options": {
+        "us": "Verenigde Staten",
+        "ca": "Canada",
+        "mx": "Mexico",
+        "br": "Brazilië",
+        "ar": "Argentinië",
+        "cl": "Chili",
+        "co": "Colombia",
+        "pe": "Peru",
+        "ec": "Ecuador",
+        "nz": "Nieuw-Zeeland",
+        "nl": "Nederland",
+        "be": "België",
+        "de": "Duitsland",
+        "fr": "Frankrijk",
+        "gb": "Verenigd Koninkrijk",
+        "es": "Spanje",
+        "it": "Italië",
+        "pt": "Portugal",
+        "at": "Oostenrijk",
+        "ch": "Zwitserland",
+        "se": "Zweden",
+        "no": "Noorwegen",
+        "dk": "Denemarken",
+        "fi": "Finland",
+        "pl": "Polen",
+        "ie": "Ierland",
+        "cz": "Tsjechië",
+        "ro": "Roemenië",
+        "hu": "Hongarije",
+        "gr": "Griekenland",
+        "tr": "Turkije",
+        "il": "Israël",
+        "za": "Zuid-Afrika",
+        "au": "Australië",
+        "ru": "Rusland",
+        "ua": "Oekraïne",
+        "eg": "Egypte",
+        "ng": "Nigeria",
+        "ke": "Kenia",
+        "pk": "Pakistan",
+        "bd": "Bangladesh",
+        "lk": "Sri Lanka",
+        "np": "Nepal",
+        "sa": "Saoedi-Arabië",
+        "ae": "Verenigde Arabische Emiraten",
+        "qa": "Qatar",
+        "kw": "Koeweit",
+        "jp": "Japan",
+        "kr": "Zuid-Korea",
+        "mn": "Mongolië",
+        "sg": "Singapore",
+        "my": "Maleisië",
+        "th": "Thailand",
+        "id": "Indonesië",
+        "ph": "Filipijnen",
+        "vn": "Vietnam",
+        "mm": "Myanmar",
+        "kh": "Cambodja",
+        "la": "Laos",
+        "bn": "Brunei",
+        "hk": "Hongkong",
+        "tw": "Taiwan",
+        "in": "India",
+        "cn": "China",
+        "other": "Anders (handmatig)"
+      }
+    }
+  },
+  "services": {
+    "activate": {
+      "name": "Slot activeren",
+      "description": "Activeer een slot waarvan de fabrieksinstellingen zijn hersteld met het ingestelde hub-account. Houd het slot actief en binnen Bluetooth-bereik tot de activering klaar is.",
+      "fields": {
+        "address": {
+          "name": "Bluetooth-adres",
+          "description": "Het Bluetooth-MAC-adres van het slot of de BLE-identificatie in Home Assistant."
+        },
+        "device_uuid": {
+          "name": "Apparaat-UUID",
+          "description": "Optionele Tuya-apparaat-UUID, indien bekend uit detectie of cloudgegevens."
+        },
+        "name": {
+          "name": "Naam van het slot",
+          "description": "Optionele naam voor het geactiveerde slot."
+        }
+      }
+    },
+    "add_pin": {
+      "name": "Pincode toevoegen",
+      "description": "Leer een pincode in op een of meer Tuya BLE-sloten voor een bepaalde persoon. De pincode wordt in het slot opgeslagen en aan de persoon gekoppeld.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "De sloten waaraan de pincode wordt toegevoegd."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "De Home Assistant-persoon aan wie dit toegangsmiddel wordt gekoppeld. Laat leeg voor een algemene gebruiker."
+        },
+        "pin_code": {
+          "name": "Pincode",
+          "description": "De pincode, bestaande uit 6 tot 10 cijfers."
+        },
+        "admin": {
+          "name": "Beheerderstoegang",
+          "description": "Of dit toegangsmiddel beheerdersrechten krijgt."
+        }
+      }
+    },
+    "add_fingerprint": {
+      "name": "Vingerafdruk inleren",
+      "description": "Start het inleren van een vingerafdruk op een Tuya BLE-slot. Leg je vinger zes keer op de sensor wanneer daarom wordt gevraagd. Dit kan enige tijd duren.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "De Home Assistant-persoon aan wie dit toegangsmiddel wordt gekoppeld. Laat leeg voor een algemene gebruiker."
+        },
+        "finger": {
+          "name": "Vinger",
+          "description": "Welke vinger wordt ingeleerd. Dit wordt opgeslagen in de naam van het toegangsmiddel, zodat je deze later kunt herkennen."
+        },
+        "admin": {
+          "name": "Beheerderstoegang",
+          "description": "Leer dit toegangsmiddel in met beheerdersrechten. Daarmee kan op Tuya-sloten mogelijk ook het beheermenu worden geopend om gebruikers toe te voegen of te verwijderen. Laat uit voor gewone gebruikers."
+        }
+      }
+    },
+    "register_credential": {
+      "name": "Bestaand toegangsmiddel registreren",
+      "description": "Koppel een toegangsmiddel dat al in het slot is ingeleerd aan een Home Assistant-persoon of gebruiker. Dit slaat alleen de lokale toewijzing op; er wordt geen opdracht naar het slot of Tuya Cloud verzonden.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "De Home Assistant-persoon aan wie dit toegangsmiddel wordt toegewezen."
+        },
+        "member_name": {
+          "name": "Gebruikersnaam",
+          "description": "De naam die wordt gebruikt als geen Home Assistant-persoon is geselecteerd."
+        },
+        "cred_type": {
+          "name": "Type toegangsmiddel",
+          "description": "Het type toegangsmiddel op de positie die je wilt toewijzen."
+        },
+        "hw_id": {
+          "name": "Hardware-ID",
+          "description": "Het positienummer dat het slot voor dit toegangsmiddel meldt."
+        },
+        "name": {
+          "name": "Naam van toegangsmiddel",
+          "description": "Optionele naam, zoals Rechterwijsvinger."
+        }
+      }
+    },
+    "add_card": {
+      "name": "Kaart inleren",
+      "description": "Start het inleren van een NFC/RFID-kaart op een Tuya BLE-slot. Houd de kaart bij de sensor wanneer daarom wordt gevraagd.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "De Home Assistant-persoon aan wie dit toegangsmiddel wordt gekoppeld. Laat leeg voor een algemene gebruiker."
+        },
+        "admin": {
+          "name": "Beheerderstoegang",
+          "description": "Leer dit toegangsmiddel in met beheerdersrechten. Daarmee kan op Tuya-sloten mogelijk ook het beheermenu worden geopend om gebruikers toe te voegen of te verwijderen. Laat uit voor gewone gebruikers."
+        }
+      }
+    },
+    "delete_credential": {
+      "name": "Toegangsmiddel verwijderen",
+      "description": "Verwijder toegangsmiddelen uit een slot. Selecteer een persoon en type, of gebruik credential_id voor een specifiek toegangsmiddel uit list_credentials.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "Verwijder de toegangsmiddelen van deze persoon."
+        },
+        "cred_type": {
+          "name": "Type toegangsmiddel",
+          "description": "Verwijder alleen dit type. Laat leeg voor alle typen."
+        },
+        "credential_id": {
+          "name": "Toegangsmiddel-ID (geavanceerd)",
+          "description": "Verwijder een specifiek toegangsmiddel op basis van de UUID uit de actie list_credentials."
+        }
+      }
+    },
+    "list_credentials": {
+      "name": "Toegangsmiddelen weergeven",
+      "description": "Toon ingeleerde toegangsmiddelen, actuele tijdelijke pincodes, verlopen pincodes die nog opgeruimd moeten worden en het aantal gearchiveerde koppelingen.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        }
+      }
+    },
+    "create_temp_password": {
+      "name": "Tijdelijke pincode maken",
+      "description": "Maak een tijdelijke pincode met een geldigheidsperiode op het slot.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        },
+        "name": {
+          "name": "Naam van de pincode",
+          "description": "Naam van de tijdelijke pincode, zodat je deze later kunt herkennen."
+        },
+        "pin_code": {
+          "name": "Pincijfers",
+          "description": "De pincode zelf, bestaande uit minstens 6 cijfers."
+        },
+        "effective_time": {
+          "name": "Begintijd",
+          "description": "Begintijd in de ingestelde tijdzone van Home Assistant. Een expliciete UTC-offset of Z wordt gerespecteerd."
+        },
+        "expiry_time": {
+          "name": "Eindtijd",
+          "description": "Eindtijd in de ingestelde tijdzone van Home Assistant. Moet na de begintijd liggen; een expliciete UTC-offset of Z wordt gerespecteerd."
+        }
+      }
+    },
+    "probe_records": {
+      "name": "Gebeurtenisgegevens onderzoeken (diagnostisch)",
+      "description": "Probeer opdrachten voor het opvragen van gebeurtenissen op het datapunt Get Records en toon alle antwoorden van het slot. Alleen voor diagnose, om te bepalen hoe gebeurtenissen na ontgrendeling van een slapend slot worden opgevraagd.",
+      "fields": {
+        "device_id": {
+          "name": "Apparaat",
+          "description": "Het apparaat-ID of MAC-adres van het slot."
+        },
+        "dp": {
+          "name": "Datapunt",
+          "description": "Het te onderzoeken datapunt. Standaard 69 (Get Records)."
+        },
+        "payloads": {
+          "name": "Opdrachten",
+          "description": "Optionele lijst met hexadecimale opdrachten in plaats van de ingebouwde reeks. Elke opdracht wordt ongewijzigd naar het datapunt verzonden."
+        },
+        "collect_seconds": {
+          "name": "Luisterduur",
+          "description": "Hoelang na elke opdracht op antwoorden wordt gewacht."
+        }
+      }
+    },
+    "report_factory_reset": {
+      "name": "Herstel van fabrieksinstellingen melden",
+      "description": "Gebruik dit nadat je de fabrieksinstellingen op het slot zelf hebt hersteld. Verwijdert de oude koppelingen van pincodes, vingerafdrukken, kaarten en andere toegangsmiddelen en de administratie van tijdelijke pincodes uit Home Assistant. Personen en andere sloten blijven behouden. Werkt ook als het slot offline is. Dit reset het slot niet en herstelt de Bluetooth-koppeling niet. Leer toegangsmiddelen opnieuw in nadat je het slot weer hebt gekoppeld.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarvan je de fabrieksinstellingen al hebt hersteld."
+        }
+      }
+    },
+    "clear_credentials": {
+      "name": "Lokale toegangsmiddelen wissen",
+      "description": "Wis de lokale administratie van toegangsmiddelen in Home Assistant. Als je een slot selecteert, worden alleen de koppelingen van dat slot gewist. Laat het veld leeg om alle toegangsmiddelen en personen te wissen. Dit verwijdert geen vingerafdrukken of pincodes uit het slot zelf.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Beperk het wissen tot één slot. Laat leeg om alles te wissen."
+        }
+      }
+    },
+    "sync_credentials": {
+      "name": "Toegangsmiddelen uit slot uitlezen",
+      "description": "Vraag op welke posities voor vingerafdrukken, pincodes en kaarten in het slot bezet zijn. Toon ook posities die Home Assistant niet kent, bijvoorbeeld na opnieuw koppelen of inleren via de app. Er wordt niets gewijzigd of verwijderd.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        }
+      }
+    },
+    "clear_fingerprints": {
+      "name": "Vingerafdrukken uit het slot wissen",
+      "description": "Verwijder vingerafdrukken uit het slot zelf en wis daarna hun toewijzing in Home Assistant. Lees eerst de bezette posities uit, zodat ook onbekende vingerafdrukken worden meegenomen, en controleer na afloop wat is verwijderd. Laat Hardware-ID leeg om alle vingerafdrukken te wissen. Vul een positie in om er één te verwijderen; probeer dat eerst op je slot.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie wordt toegepast."
+        },
+        "hw_id": {
+          "name": "Hardware-ID",
+          "description": "Wis alleen deze positie. Laat leeg om alle vingerafdrukken te wissen."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "device_not_found": {
+      "message": "Apparaat niet gevonden: '{device_id}'. Gebruik een MAC-adres of Home Assistant-apparaat-ID."
+    },
+    "invalid_pin": {
+      "message": "De pincode moet uit minstens 6 cijfers bestaan."
+    },
+    "invalid_hardware_id": {
+      "message": "Het hardware-ID moet tussen 1 en 4294967295 liggen."
+    },
+    "service_unsupported": {
+      "message": "De actie {service} wordt niet ondersteund door dit apparaatprofiel."
+    },
+    "fingerprint_timeout": {
+      "message": "Het inleren van de vingerafdruk is niet binnen 60 seconden voltooid."
+    },
+    "card_timeout": {
+      "message": "Het inleren van de kaart is niet binnen 30 seconden voltooid."
+    },
+    "sync_failed": {
+      "message": "Het uitlezen van alle typen toegangsmiddelen is mislukt: {details}"
+    },
+    "clear_unsupported": {
+      "message": "Dit apparaatprofiel ondersteunt de benodigde uitlees- en verwijderacties niet."
+    },
+    "activation_failed": {
+      "message": "Het slot kon niet worden geactiveerd: {details}"
+    },
+    "activation_unexpected": {
+      "message": "Het slot kon niet worden geactiveerd door een onverwachte fout."
+    },
+    "credential_not_found": {
+      "message": "Toegangsmiddel '{credential_id}' niet gevonden"
+    },
+    "member_not_found": {
+      "message": "Gebruiker '{member_name}' niet gevonden"
+    },
+    "no_credentials": {
+      "message": "Geen toegangsmiddelen van type {cred_type} gevonden voor '{member_name}' op dit slot"
+    },
+    "temp_password_no_response": {
+      "message": "Geen antwoord van het slot bij het maken van een tijdelijke pincode."
+    },
+    "query_no_response": {
+      "message": "Het slot heeft niet geantwoord op het opvragen van toegangsmiddelen. Er is niets verwijderd. Probeer het opnieuw zodra het slot bereikbaar is."
+    },
+    "fingerprint_not_found": {
+      "message": "Het slot meldt geen vingerafdruk op positie {slot}."
+    },
+    "pin_no_response": {
+      "message": "Geen antwoord van het slot tijdens het inleren van de pincode."
+    },
+    "pin_enrollment_failed": {
+      "message": "Het inleren van de pincode is mislukt: {details}"
+    },
+    "fingerprint_enrollment_failed": {
+      "message": "Het inleren van de vingerafdruk is mislukt: {details}"
+    },
+    "card_enrollment_failed": {
+      "message": "Het inleren van de kaart is mislukt: {details}"
+    },
+    "cloud_refresh_failed": {
+      "message": "De slotgegevens konden niet via de cloud worden vernieuwd: {details}"
+    },
+    "card_already_enrolled": {
+      "message": "Het slot meldt dat deze kaart al is aangemeld. Verlaat de kaart-aanmeldmodus en test normaal ontgrendelen. Bepaal eerst de bestaande kaartpositie met Toegangsmiddelen uit slot uitlezen om deze in Home Assistant toe te wijzen. Er is geen nieuwe koppeling opgeslagen."
+    },
+    "card_enrollment_unconfirmed": {
+      "message": "Het slot meldde een geslaagde aanmelding zonder geldige kaartpositie. Er is geen koppeling opgeslagen. Lees de bestaande posities uit met Toegangsmiddelen uit slot uitlezen voordat je een persoon toewijst."
+    },
+    "temp_password_invalid_time": {
+      "message": "Voer geldige begin- en eindtijden in tussen 1970 en februari 2106."
+    },
+    "temp_password_nonexistent_time": {
+      "message": "De begin- of eindtijd bestaat niet in de tijdzone van Home Assistant doordat de klok vooruitgaat. Kies een ander tijdstip."
+    },
+    "temp_password_ambiguous_time": {
+      "message": "De begin- of eindtijd komt tweemaal voor doordat de klok teruggaat. Geef in YAML expliciet de UTC-offset op, bijvoorbeeld +02:00 of +01:00."
+    },
+    "temp_password_invalid_period": {
+      "message": "De eindtijd moet na de begintijd liggen."
+    },
+    "temp_password_unconfirmed": {
+      "message": "Het slot heeft het aanmaken niet bevestigd met een geldig ID voor de tijdelijke pincode. Er is geen koppeling opgeslagen."
+    },
+    "temp_password_rejected": {
+      "message": "Het slot heeft de tijdelijke pincode geweigerd (code {code}: 0x01 mislukt, 0x02 geen vrije plek, 0x03 pincode bestaat al). Er is geen koppeling opgeslagen."
+    },
+    "migration_missing_source": {
+      "message": "De oorspronkelijke integratie voor de migratie ontbreekt. Zet de Home Assistant-back-up terug."
+    },
+    "migration_unsupported_source": {
+      "message": "Migratie vereist een Tuya BLE Lock-hub met configuratieversie 2."
+    },
+    "migration_unload_failed": {
+      "message": "De oude integratie kon niet worden gestopt. Herstart Home Assistant om het opnieuw te proberen."
+    },
+    "migration_storage_conflict": {
+      "message": "De opslag onder het nieuwe domein bevat al andere gegevens. Bestaande gegevens zijn niet overschreven."
+    },
+    "migration_entity_missing": {
+      "message": "Een te migreren entiteit ontbreekt. Zet de Home Assistant-back-up terug."
+    },
+    "migration_entity_conflict": {
+      "message": "Een entiteit hoort bij een onverwachte integratie. De migratie is gestopt."
+    },
+    "migration_restart_required": {
+      "message": "Herstart Home Assistant om de domeinmigratie af te ronden."
+    }
+  }
+}

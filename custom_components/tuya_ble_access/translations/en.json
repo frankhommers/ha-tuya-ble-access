@@ -1,0 +1,687 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Tuya BLE Access",
+        "menu_options": {
+          "cloud": "Tuya Cloud account",
+          "local": "Local credentials"
+        }
+      },
+      "local": {
+        "title": "Import an already-bound lock",
+        "description": "Enter the BLE credentials for a lock that is already bound. The integration stores these locally and does not contact Tuya Cloud.",
+        "data": {
+          "name": "Lock name",
+          "device_mac": "Bluetooth MAC address",
+          "device_uuid": "Device UUID",
+          "device_id": "Device ID",
+          "product_id": "Device profile",
+          "local_key": "Local key",
+          "sec_key": "Security key",
+          "verify_key": "Verify key",
+          "auth_key": "Encrypted authentication key",
+          "auth_random": "Authentication random",
+          "check_code": "Check code"
+        }
+      },
+      "select_country": {
+        "title": "Select Country",
+        "description": "Choose your country to automatically configure the correct Tuya cloud region and country code.",
+        "data": {
+          "country": "Country"
+        }
+      },
+      "cloud_login": {
+        "title": "Tuya Cloud Credentials",
+        "description": "Enter your Tuya Smart or Smart Life app credentials to fetch the encryption keys for your locks.\n\nData center: {region}",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "country_code": "Country code (e.g. 31)",
+          "region": "Cloud region"
+        }
+      },
+      "confirm_new_device": {
+        "title": "New Lock Found",
+        "description": "A new Tuya BLE lock was found: {name} ({mac}). Factory-reset the lock and wake it so it keeps advertising, then submit this form to activate it locally over Bluetooth. Keep the lock close to a Home Assistant Bluetooth adapter or proxy."
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Tuya account",
+        "description": "Re-enter your Tuya password for {email}. This also refreshes the BLE keys for every stored lock — use this after re-pairing a lock in the Tuya app.",
+        "data": {
+          "password": "Password",
+          "tuya_country_code": "Country code",
+          "tuya_region": "Cloud region"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Tuya account",
+        "description": "Enter your Tuya cloud account. Email is prefilled with the current value — change it if you moved to a different account. A hub set up locally will also ask for country and region. Refreshes BLE keys for every lock on the hub (use this after re-pairing in the Tuya app).",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "tuya_country_code": "Country code",
+          "tuya_region": "Cloud region"
+        }
+      },
+      "migrate": {
+        "title": "Migrate the existing integration",
+        "description": "Take over the existing Tuya BLE Lock hub. Devices, entity IDs, local keys and enrolled credentials are preserved. The old integration is removed. Update automation actions and events from tuya_ble_lock to tuya_ble_access. Back up Home Assistant first."
+      }
+    },
+    "error": {
+      "auth_key_failed": "Could not connect to Tuya cloud. Check your credentials, country, and region.",
+      "activation_seed_missing": "Tuya cloud did not provide all data required for local activation. Check that the lock belongs to this account, then factory-reset and wake it before trying again.",
+      "bluetooth_unavailable": "The lock is not currently reachable over local Bluetooth. Wake it, keep it near a Home Assistant Bluetooth adapter or proxy, and try again.",
+      "device_already_bound": "The lock reports that it is already bound. Factory-reset it, wake it, and try local Bluetooth activation again.",
+      "pairing_failed": "The lock did not accept or complete local Bluetooth pairing. Confirm it was factory-reset, wake it, and try again.",
+      "bind_verification_failed": "Bluetooth pairing completed, but the lock's bound state could not be verified. Keep it awake and nearby, then try again.",
+      "activation_cloud_fetch_failed": "Could not fetch activation data from Tuya cloud. Check the network and account configuration, then try again.",
+      "activation_storage_unavailable": "Local credential storage is unavailable, so activation was not started. Try again later.",
+      "activation_credentials_not_saved": "The lock may already be bound, but its credentials could not be saved or loaded after activation. Try again; if the problem continues, reconfigure the integration.",
+      "activation_failed": "Local Bluetooth activation could not be completed. Wake the lock and try again; if the problem continues, reconfigure the integration.",
+      "integration_changed": "The Tuya BLE Access integration changed while this confirmation was open. Start Bluetooth discovery again.",
+      "invalid_local_credentials": "The local credentials are incomplete or invalid. Check the MAC address, key lengths, hexadecimal values, and 8-digit check code.",
+      "local_storage_unavailable": "The local lock credentials could not be saved. Try again later.",
+      "invalid_country": "Select a valid country."
+    },
+    "abort": {
+      "already_configured": "This lock is already configured.",
+      "single_instance_allowed": "A Tuya BLE Access hub is already configured. New locks are added automatically via Bluetooth discovery.",
+      "device_added": "Lock added successfully. It will appear shortly.",
+      "missing_credentials": "Hub entry has no cloud credentials. Please reconfigure the integration.",
+      "cloud_fetch_failed": "Could not fetch device info from Tuya cloud. The lock may not be paired to your Tuya app account.",
+      "reauth_successful": "Re-authentication successful. BLE keys refreshed for all locks.",
+      "local_entry_no_reconfigure": "This hub uses local credentials and has no Tuya Cloud account to reconfigure.",
+      "not_a_lock": "This Tuya device is not a lock, so it was not added.",
+      "legacy_migration_unavailable": "Migration requires exactly one enabled Tuya BLE Lock hub with configuration version 2. Update the old integration first and enable the hub."
+    }
+  },
+  "entity": {
+    "lock": {
+      "lock": {
+        "name": "Lock"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      },
+      "battery_state": {
+        "name": "Battery state"
+      },
+      "last_unlock_by": {
+        "name": "Last unlock by"
+      },
+      "last_unlock_credential": {
+        "name": "Last unlock credential"
+      },
+      "last_unlock": {
+        "name": "Last unlock",
+        "state": {
+          "fingerprint": "Fingerprint",
+          "password": "PIN code",
+          "dynamic_code": "Dynamic code",
+          "card": "NFC card",
+          "mechanical_key": "Mechanical key",
+          "bluetooth": "Bluetooth",
+          "temporary_code": "Temporary code",
+          "remote_phone": "Remote (phone)",
+          "remote_voice": "Remote (voice)",
+          "offline_code": "Offline code"
+        }
+      },
+      "lock_alarm": {
+        "name": "Lock alarm",
+        "state": {
+          "wrong_finger": "Wrong fingerprint",
+          "wrong_password": "Wrong PIN",
+          "wrong_card": "Wrong card",
+          "wrong_face": "Wrong face",
+          "tongue_bad": "Bolt jammed",
+          "too_hot": "Overheated",
+          "unclosed_time": "Left open too long",
+          "tongue_not_out": "Bolt not extended",
+          "pry": "Pry attempt",
+          "key_in": "Key in lock",
+          "low_battery": "Low battery",
+          "power_off": "Power off",
+          "shock": "Shock detected",
+          "defense": "Defense mode"
+        }
+      },
+      "door": {
+        "name": "Door",
+        "state": {
+          "unknown": "Unknown",
+          "open": "Open",
+          "closed": "Closed"
+        }
+      },
+      "credentials": {
+        "name": "Credentials"
+      },
+      "last_unlock_time": {
+        "name": "Last unlock time"
+      },
+      "last_alarm_time": {
+        "name": "Lock alarm time"
+      }
+    },
+    "switch": {
+      "auto_lock": {
+        "name": "Auto-lock"
+      },
+      "double_lock": {
+        "name": "Privacy lock"
+      },
+      "persistent_connection": {
+        "name": "Persistent connection"
+      },
+      "passage_mode": {
+        "name": "Passage mode"
+      }
+    },
+    "select": {
+      "volume": {
+        "name": "Keypad sound",
+        "state": {
+          "mute": "Mute",
+          "low": "Low",
+          "normal": "Normal",
+          "high": "High"
+        }
+      },
+      "language": {
+        "name": "Language",
+        "state": {
+          "chinese_simplified": "Chinese (simplified)",
+          "english": "English"
+        }
+      },
+      "unlock_mode": {
+        "name": "Unlock mode",
+        "state": {
+          "single_unlock": "Single credential",
+          "finger_password": "Fingerprint and PIN",
+          "finger_card": "Fingerprint and card",
+          "password_card": "PIN and card"
+        }
+      }
+    },
+    "number": {
+      "auto_lock_time": {
+        "name": "Auto-lock delay"
+      }
+    },
+    "button": {
+      "report_factory_reset": {
+        "name": "Report hardware factory reset"
+      },
+      "refresh": {
+        "name": "Refresh status locally"
+      },
+      "cloud_refresh": {
+        "name": "Refresh status via cloud"
+      }
+    },
+    "binary_sensor": {
+      "doorbell": {
+        "name": "Doorbell"
+      },
+      "hijack": {
+        "name": "Hijack alarm"
+      },
+      "message": {
+        "name": "Message"
+      }
+    }
+  },
+  "selector": {
+    "credential_type": {
+      "options": {
+        "pin": "PIN",
+        "fingerprint": "Fingerprint",
+        "card": "Card"
+      }
+    },
+    "finger": {
+      "options": {
+        "right_thumb": "Right thumb",
+        "right_index": "Right index",
+        "right_middle": "Right middle",
+        "right_ring": "Right ring",
+        "right_pinky": "Right pinky",
+        "left_thumb": "Left thumb",
+        "left_index": "Left index",
+        "left_middle": "Left middle",
+        "left_ring": "Left ring",
+        "left_pinky": "Left pinky"
+      }
+    },
+    "region": {
+      "options": {
+        "eu": "Europe (EU)",
+        "us": "Americas (US)",
+        "cn": "China (CN)",
+        "in": "India (IN)"
+      }
+    },
+    "country": {
+      "options": {
+        "us": "United States",
+        "ca": "Canada",
+        "mx": "Mexico",
+        "br": "Brazil",
+        "ar": "Argentina",
+        "cl": "Chile",
+        "co": "Colombia",
+        "pe": "Peru",
+        "ec": "Ecuador",
+        "nz": "New Zealand",
+        "nl": "Netherlands",
+        "be": "Belgium",
+        "de": "Germany",
+        "fr": "France",
+        "gb": "United Kingdom",
+        "es": "Spain",
+        "it": "Italy",
+        "pt": "Portugal",
+        "at": "Austria",
+        "ch": "Switzerland",
+        "se": "Sweden",
+        "no": "Norway",
+        "dk": "Denmark",
+        "fi": "Finland",
+        "pl": "Poland",
+        "ie": "Ireland",
+        "cz": "Czechia",
+        "ro": "Romania",
+        "hu": "Hungary",
+        "gr": "Greece",
+        "tr": "Türkiye",
+        "il": "Israel",
+        "za": "South Africa",
+        "au": "Australia",
+        "ru": "Russia",
+        "ua": "Ukraine",
+        "eg": "Egypt",
+        "ng": "Nigeria",
+        "ke": "Kenya",
+        "pk": "Pakistan",
+        "bd": "Bangladesh",
+        "lk": "Sri Lanka",
+        "np": "Nepal",
+        "sa": "Saudi Arabia",
+        "ae": "United Arab Emirates",
+        "qa": "Qatar",
+        "kw": "Kuwait",
+        "jp": "Japan",
+        "kr": "South Korea",
+        "mn": "Mongolia",
+        "sg": "Singapore",
+        "my": "Malaysia",
+        "th": "Thailand",
+        "id": "Indonesia",
+        "ph": "Philippines",
+        "vn": "Vietnam",
+        "mm": "Myanmar",
+        "kh": "Cambodia",
+        "la": "Laos",
+        "bn": "Brunei",
+        "hk": "Hong Kong",
+        "tw": "Taiwan",
+        "in": "India",
+        "cn": "China",
+        "other": "Other (manual)"
+      }
+    }
+  },
+  "services": {
+    "activate": {
+      "name": "Activate lock",
+      "description": "Activate a factory-reset Tuya BLE lock using the configured hub account. Keep the lock awake and in Bluetooth range until activation completes.",
+      "fields": {
+        "address": {
+          "name": "Bluetooth address",
+          "description": "The lock's Bluetooth MAC address or Home Assistant BLE identifier."
+        },
+        "device_uuid": {
+          "name": "Device UUID",
+          "description": "Optional Tuya device UUID when it is known from discovery or cloud data."
+        },
+        "name": {
+          "name": "Lock name",
+          "description": "Optional name to store for the activated lock."
+        }
+      }
+    },
+    "add_pin": {
+      "name": "Add PIN code",
+      "description": "Enroll a PIN code on one or more Tuya BLE locks for a specific member. The PIN will be stored in the lock's memory and associated with the member.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock device(s) to add the PIN to."
+        },
+        "person": {
+          "name": "Person",
+          "description": "HA person to associate this credential with. Leave empty for a generic member."
+        },
+        "pin_code": {
+          "name": "PIN code",
+          "description": "The PIN digits (6-10 digits, numbers only)."
+        },
+        "admin": {
+          "name": "Admin credential",
+          "description": "Whether this is an admin credential."
+        }
+      }
+    },
+    "add_fingerprint": {
+      "name": "Start fingerprint enrollment",
+      "description": "Begin fingerprint enrollment on a Tuya BLE lock. The user must place their finger on the sensor 6 times when prompted. This is a long-running operation.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "person": {
+          "name": "Person",
+          "description": "HA person to associate this credential with. Leave empty for a generic member."
+        },
+        "finger": {
+          "name": "Finger",
+          "description": "Which finger is being enrolled — stored as part of the credential name so you know which one to delete later."
+        },
+        "admin": {
+          "name": "Admin credential",
+          "description": "Enrol as an administrator credential instead of a normal user. On Tuya locks an admin credential may also open the lock's own management menu (adding/removing users), not just unlock. Leave off for normal users."
+        }
+      }
+    },
+    "register_credential": {
+      "name": "Register existing credential",
+      "description": "Associate a credential that already exists in the lock with a Home Assistant person or member. This only stores local attribution metadata; it does not send a command to the lock or contact Tuya Cloud.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "person": {
+          "name": "Person",
+          "description": "Home Assistant person to attribute this credential to."
+        },
+        "member_name": {
+          "name": "Member name",
+          "description": "Name to use when no Home Assistant person is selected."
+        },
+        "cred_type": {
+          "name": "Credential type",
+          "description": "Which kind of credential occupies the hardware slot you are assigning."
+        },
+        "hw_id": {
+          "name": "Hardware ID",
+          "description": "Numeric slot ID reported by the lock for this credential."
+        },
+        "name": {
+          "name": "Credential label",
+          "description": "Optional label such as \"Right index\"."
+        }
+      }
+    },
+    "add_card": {
+      "name": "Start card enrollment",
+      "description": "Begin NFC/RFID card enrollment on a Tuya BLE lock. Tap the card on the sensor when prompted.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "person": {
+          "name": "Person",
+          "description": "HA person to associate this credential with. Leave empty for a generic member."
+        },
+        "admin": {
+          "name": "Admin credential",
+          "description": "Enrol as an administrator credential instead of a normal user. On Tuya locks an admin credential may also open the lock's own management menu (adding/removing users), not just unlock. Leave off for normal users."
+        }
+      }
+    },
+    "delete_credential": {
+      "name": "Delete credential",
+      "description": "Delete credentials from a lock. Use person + type to delete by member, or credential_id for a specific credential (from list_credentials).",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "person": {
+          "name": "Person",
+          "description": "Delete credentials belonging to this person."
+        },
+        "cred_type": {
+          "name": "Credential type",
+          "description": "Only delete this type (leave empty for all types)."
+        },
+        "credential_id": {
+          "name": "Credential ID (advanced)",
+          "description": "Delete a specific credential by UUID (from list_credentials service)."
+        }
+      }
+    },
+    "list_credentials": {
+      "name": "List credentials",
+      "description": "List enrolled credentials, current temporary PINs, expired PINs awaiting cleanup and the archived mapping count.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        }
+      }
+    },
+    "create_temp_password": {
+      "name": "Create temporary password",
+      "description": "Create a time-limited temporary password on the lock (DP 51).",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "name": {
+          "name": "Password name",
+          "description": "Label stored with the temporary password so you can recognise it later."
+        },
+        "pin_code": {
+          "name": "PIN digits",
+          "description": "The PIN itself. Digits only, at least 6 of them."
+        },
+        "effective_time": {
+          "name": "Start time",
+          "description": "Start time in the configured Home Assistant time zone. An explicit UTC offset or Z is respected."
+        },
+        "expiry_time": {
+          "name": "End time",
+          "description": "End time in the configured Home Assistant time zone. Must follow the start time; an explicit UTC offset or Z is respected."
+        }
+      }
+    },
+    "probe_records": {
+      "name": "Probe records (diagnostic)",
+      "description": "Sweep candidate history-read payloads on the lock's \"Get Records\" DP and report every datapoint the lock sends back. Diagnostic only - used to find the command that replays unlock records after a sleeping-lock unlock.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Lock device ID or MAC address."
+        },
+        "dp": {
+          "name": "Datapoint",
+          "description": "Datapoint to probe. Defaults to 69 (\"Get Records\")."
+        },
+        "payloads": {
+          "name": "Payloads",
+          "description": "Optional list of raw hex payloads to send instead of the built-in sweep. Each is sent as-is to the datapoint."
+        },
+        "collect_seconds": {
+          "name": "Collect seconds",
+          "description": "How long to listen after each payload."
+        }
+      }
+    },
+    "report_factory_reset": {
+      "name": "Report hardware factory reset",
+      "description": "Use after you have physically factory-reset this lock. Removes its old PIN, fingerprint, card and other credential mappings, plus temporary password records, from Home Assistant. People and other locks are preserved. Works while the lock is offline. Does not reset the hardware or restore Bluetooth pairing; enroll credentials again after reconnecting the lock.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock you have already factory-reset."
+        }
+      }
+    },
+    "clear_credentials": {
+      "name": "Clear credential store",
+      "description": "Empty the Home Assistant credential/attribution store. With a lock selected, clears only that lock's credentials; leave it empty to wipe all credentials and members. This only clears HA-side metadata — it does NOT remove fingerprints or PINs from the lock hardware.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "Limit the clear to one lock. Leave empty to clear everything."
+        }
+      }
+    },
+    "sync_credentials": {
+      "name": "Sync credentials from lock (read-only)",
+      "description": "Ask the lock which credential slots are actually occupied (fingerprint, PIN, card) and report them, flagging any the HA store does not know about (orphans left by re-pairs or app-side enrollment). Read-only — nothing is written or deleted.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        }
+      }
+    },
+    "clear_fingerprints": {
+      "name": "Clear fingerprints from the lock",
+      "description": "Delete fingerprints from the LOCK itself and then drop their Home Assistant attribution. Enumerates the lock's real slots first (so orphans left by re-pairs are removed too) and re-reads afterwards to prove what is gone. Leave Hardware ID empty to clear every fingerprint; set it to remove a single slot — do that first to verify on your lock.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "hw_id": {
+          "name": "Hardware ID",
+          "description": "Clear only this slot. Empty clears all fingerprints."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "device_not_found": {
+      "message": "Device not found: '{device_id}'. Use a MAC address or Home Assistant device ID."
+    },
+    "invalid_pin": {
+      "message": "PIN must be at least 6 digits"
+    },
+    "invalid_hardware_id": {
+      "message": "Hardware ID must be between 1 and 4294967295"
+    },
+    "service_unsupported": {
+      "message": "The action {service} is not supported by this device profile."
+    },
+    "fingerprint_timeout": {
+      "message": "Fingerprint enrollment timed out (no completion in 60s)"
+    },
+    "card_timeout": {
+      "message": "Card enrollment timed out (no completion in 30s)"
+    },
+    "sync_failed": {
+      "message": "Credential sync failed for every type: {details}"
+    },
+    "clear_unsupported": {
+      "message": "This device profile does not support the required sync and delete actions."
+    },
+    "activation_failed": {
+      "message": "Could not activate lock: {details}"
+    },
+    "activation_unexpected": {
+      "message": "Could not activate lock due to an unexpected error"
+    },
+    "credential_not_found": {
+      "message": "Credential '{credential_id}' not found"
+    },
+    "member_not_found": {
+      "message": "Member '{member_name}' not found"
+    },
+    "no_credentials": {
+      "message": "No {cred_type} credentials found for '{member_name}' on this lock"
+    },
+    "temp_password_no_response": {
+      "message": "No response from lock for temp password creation"
+    },
+    "query_no_response": {
+      "message": "The lock did not answer the credential query; nothing was deleted. Try again once it is reachable."
+    },
+    "fingerprint_not_found": {
+      "message": "The lock reports no fingerprint in slot {slot}"
+    },
+    "pin_no_response": {
+      "message": "No response from lock during PIN enrollment"
+    },
+    "pin_enrollment_failed": {
+      "message": "PIN enrollment failed: {details}"
+    },
+    "fingerprint_enrollment_failed": {
+      "message": "Fingerprint enrollment failed: {details}"
+    },
+    "card_enrollment_failed": {
+      "message": "Card enrollment failed: {details}"
+    },
+    "cloud_refresh_failed": {
+      "message": "Could not refresh the lock via cloud: {details}"
+    },
+    "card_already_enrolled": {
+      "message": "The lock reports that this card is already enrolled. Exit card enrollment and test normal unlocking. To associate it in Home Assistant, first identify its existing slot with Sync credentials from lock. No new credential mapping was saved."
+    },
+    "card_enrollment_unconfirmed": {
+      "message": "The lock reported enrollment success without a valid card slot. No credential mapping was saved. Read the existing slots with Sync credentials from lock before assigning a person."
+    },
+    "temp_password_invalid_time": {
+      "message": "Enter valid start and end times between 1970 and February 2106."
+    },
+    "temp_password_nonexistent_time": {
+      "message": "The start or end time does not exist in the Home Assistant time zone because the clock moves forward. Choose another time."
+    },
+    "temp_password_ambiguous_time": {
+      "message": "The start or end time occurs twice when the clock moves back. Specify an explicit UTC offset in YAML, such as +02:00 or +01:00."
+    },
+    "temp_password_invalid_period": {
+      "message": "The end time must be later than the start time."
+    },
+    "temp_password_unconfirmed": {
+      "message": "The lock did not confirm creation with a valid temporary PIN ID. No mapping was saved."
+    },
+    "temp_password_rejected": {
+      "message": "The lock rejected the temporary PIN (code {code}: 0x01 failed, 0x02 no free slot, 0x03 PIN already exists). No mapping was saved."
+    },
+    "migration_missing_source": {
+      "message": "The source integration for migration is missing. Restore the Home Assistant backup."
+    },
+    "migration_unsupported_source": {
+      "message": "Migration requires a Tuya BLE Lock version-2 hub."
+    },
+    "migration_unload_failed": {
+      "message": "The previous integration could not be unloaded. Restart Home Assistant to retry."
+    },
+    "migration_storage_conflict": {
+      "message": "New-domain storage already contains different data. No existing data has been overwritten."
+    },
+    "migration_entity_missing": {
+      "message": "An entity to migrate is missing. Restore the Home Assistant backup."
+    },
+    "migration_entity_conflict": {
+      "message": "An entity belongs to an unexpected integration. Migration has stopped."
+    },
+    "migration_restart_required": {
+      "message": "Restart Home Assistant to finish domain migration."
+    }
+  }
+}

@@ -1,0 +1,11 @@
+title = "Tuya BLE Access source checks"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Existing shared Tuya app constants; never personal lock/account credentials"
+condition = "AND"
+paths = ['''(^|/)custom_components/tuya_ble_access/tuya_cloud\.py$''']
+regexTarget = "line"
+regexes = ['''^DEFAULT_(BMP_KEY|APP_SECRET)\s*=''']

@@ -1,0 +1,432 @@
+activate:
+  name: Activate lock
+  description: >
+    Activate a factory-reset Tuya BLE lock using the configured hub account.
+    Keep the lock awake and in Bluetooth range until activation completes.
+  fields:
+    address:
+      name: Bluetooth address
+      description: >
+        The lock's Bluetooth MAC address or Home Assistant BLE identifier.
+      required: true
+      example: "AA:BB:CC:DD:EE:FF"
+      selector:
+        text:
+    device_uuid:
+      name: Device UUID
+      description: >
+        Optional Tuya device UUID when it is known from discovery or cloud data.
+      required: false
+      selector:
+        text:
+    name:
+      name: Lock name
+      description: Optional name to store for the activated lock.
+      required: false
+      selector:
+        text:
+
+add_pin:
+  name: Add PIN code
+  description: >
+    Enroll a PIN code on one or more Tuya BLE locks for a specific member.
+    The PIN will be stored in the lock's memory and associated with the member.
+  fields:
+    device_id:
+      name: Lock device
+      description: The lock device(s) to add the PIN to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    person:
+      name: Person
+      description: HA person to associate this credential with. Leave empty for a generic member.
+      required: false
+      selector:
+        entity:
+          domain: person
+    pin_code:
+      name: PIN code
+      description: The PIN digits (6-10 digits, numbers only).
+      required: true
+      selector:
+        text:
+    admin:
+      name: Admin credential
+      description: Whether this is an admin credential.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+add_fingerprint:
+  name: Start fingerprint enrollment
+  description: >
+    Begin fingerprint enrollment on a Tuya BLE lock. The user must place their
+    finger on the sensor 6 times when prompted. This is a long-running operation.
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    person:
+      name: Person
+      description: HA person to associate this credential with. Leave empty for a generic member.
+      required: false
+      selector:
+        entity:
+          domain: person
+    finger:
+      name: Finger
+      description: Which finger is being enrolled — stored as part of the credential name so you know which one to delete later.
+      required: false
+      selector:
+        select:
+          custom_value: true
+          translation_key: finger
+          options:
+            - "right_thumb"
+            - "right_index"
+            - "right_middle"
+            - "right_ring"
+            - "right_pinky"
+            - "left_thumb"
+            - "left_index"
+            - "left_middle"
+            - "left_ring"
+            - "left_pinky"
+    admin:
+      name: Admin credential
+      description: >
+        Enrol as an administrator credential instead of a normal user. On Tuya locks an admin credential may also open the lock's own management menu (adding/removing users), not just unlock. Leave off for normal users.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+register_credential:
+  name: Register existing credential
+  description: >
+    Associate a credential that already exists in the lock with a Home Assistant
+    person or member. This only stores local attribution metadata; it does not
+    send a command to the lock or contact Tuya Cloud.
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    person:
+      name: Person
+      description: Home Assistant person to attribute this credential to.
+      required: false
+      selector:
+        entity:
+          domain: person
+    member_name:
+      name: Member name
+      description: Name to use when no Home Assistant person is selected.
+      required: false
+      selector:
+        text:
+    cred_type:
+      name: Credential type
+      description: >
+        Which kind of credential occupies the hardware slot you are assigning.
+      required: true
+      selector:
+        select:
+          translation_key: credential_type
+          options:
+            - pin
+            - fingerprint
+            - card
+    hw_id:
+      name: Hardware ID
+      description: Numeric slot ID reported by the lock for this credential.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 4294967295
+          mode: box
+    name:
+      name: Credential label
+      description: Optional label such as "Right index".
+      required: false
+      selector:
+        text:
+
+add_card:
+  name: Start card enrollment
+  description: >
+    Begin NFC/RFID card enrollment on a Tuya BLE lock. Tap the card on the
+    sensor when prompted.
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    person:
+      name: Person
+      description: HA person to associate this credential with. Leave empty for a generic member.
+      required: false
+      selector:
+        entity:
+          domain: person
+    admin:
+      name: Admin credential
+      description: >
+        Enrol as an administrator credential instead of a normal user. On Tuya locks an admin credential may also open the lock's own management menu (adding/removing users), not just unlock. Leave off for normal users.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+delete_credential:
+  name: Delete credential
+  description: >
+    Delete credentials from a lock. Use person + type to delete by member,
+    or credential_id for a specific credential (from list_credentials).
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    person:
+      name: Person
+      description: Delete credentials belonging to this person.
+      required: false
+      selector:
+        entity:
+          domain: person
+    cred_type:
+      name: Credential type
+      description: Only delete this type (leave empty for all types).
+      required: false
+      selector:
+        select:
+          translation_key: credential_type
+          options:
+            - pin
+            - fingerprint
+            - card
+    credential_id:
+      name: Credential ID (advanced)
+      description: Delete a specific credential by UUID (from list_credentials service).
+      required: false
+      selector:
+        text:
+
+list_credentials:
+  name: List credentials
+  description: List enrolled credentials, current temporary PINs, expired PINs awaiting cleanup and the archived mapping count.
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+
+create_temp_password:
+  name: Create temporary password
+  description: >
+    Create a time-limited temporary password on the lock (DP 51).
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    name:
+      name: Password name
+      description: >
+        Label stored with the temporary password so you can recognise it later.
+      required: true
+      selector:
+        text:
+    pin_code:
+      name: PIN digits
+      description: >
+        The PIN itself. Digits only, at least 6 of them.
+      required: true
+      selector:
+        text:
+    effective_time:
+      name: Start time
+      description: >
+        Start time in the configured Home Assistant time zone. An explicit UTC offset or Z is respected.
+      required: true
+      selector:
+        datetime:
+    expiry_time:
+      name: End time
+      description: >
+        End time in the configured Home Assistant time zone. Must follow the start time; an explicit UTC offset or Z is respected.
+      required: true
+      selector:
+        datetime:
+
+probe_records:
+  name: Probe records (diagnostic)
+  description: >-
+    Sweep candidate history-read payloads on the lock's "Get Records" DP and
+    report every datapoint the lock sends back. Diagnostic only - used to find
+    the command that replays unlock records after a sleeping-lock unlock.
+  fields:
+    device_id:
+      name: Device
+      description: Lock device ID or MAC address.
+      required: true
+      selector:
+        text:
+    dp:
+      name: Datapoint
+      description: Datapoint to probe. Defaults to 69 ("Get Records").
+      required: false
+      example: 69
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    payloads:
+      name: Payloads
+      description: >-
+        Optional list of raw hex payloads to send instead of the built-in
+        sweep. Each is sent as-is to the datapoint.
+      required: false
+      example: '["ffff00013335323733363836 00"]'
+      selector:
+        object:
+    collect_seconds:
+      name: Collect seconds
+      description: How long to listen after each payload.
+      required: false
+      example: 6
+      selector:
+        number:
+          min: 1
+          max: 30
+          mode: box
+
+report_factory_reset:
+  name: Report hardware factory reset
+  description: >
+    Use after you have physically factory-reset this lock. Removes its old PIN,
+    fingerprint, card and other credential mappings, plus temporary password
+    records, from Home Assistant. People and other locks are preserved.
+    Works while the lock is offline. Does not reset the hardware or restore
+    Bluetooth pairing; enroll credentials again after reconnecting the lock.
+  fields:
+    device_id:
+      name: Lock device
+      description: The lock you have already factory-reset.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+
+clear_credentials:
+  name: Clear credential store
+  description: >
+    Empty the Home Assistant credential/attribution store. With a lock selected,
+    clears only that lock's credentials; leave it empty to wipe all credentials
+    and members. This only clears HA-side metadata — it does NOT remove
+    fingerprints or PINs from the lock hardware.
+  fields:
+    device_id:
+      name: Lock device
+      description: Limit the clear to one lock. Leave empty to clear everything.
+      required: false
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+
+sync_credentials:
+  name: Sync credentials from lock (read-only)
+  description: >
+    Ask the lock which credential slots are actually occupied (fingerprint, PIN,
+    card) and report them, flagging any the HA store does not know about
+    (orphans left by re-pairs or app-side enrollment). Read-only — nothing is
+    written or deleted.
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+
+clear_fingerprints:
+  name: Clear fingerprints from the lock
+  description: >
+    Delete fingerprints from the LOCK itself and then drop their Home Assistant
+    attribution. Enumerates the lock's real slots first (so orphans left by
+    re-pairs are removed too) and re-reads afterwards to prove what is gone.
+    Leave Hardware ID empty to clear every fingerprint; set it to remove a
+    single slot — do that first to verify on your lock.
+  fields:
+    device_id:
+      name: Lock device
+      description: >
+        The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    hw_id:
+      name: Hardware ID
+      description: Clear only this slot. Empty clears all fingerprints.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box

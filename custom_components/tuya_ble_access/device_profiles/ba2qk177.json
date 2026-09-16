@@ -1,0 +1,226 @@
+{
+  "product_id": "ba2qk177",
+  "name": "K3 BLE PRO 2",
+  "model": "K3",
+  "category": "jtmspro",
+  "entities": {
+    "lock": {
+      "unlock_dp": 71,
+      "behavior": "momentary"
+    },
+    "battery_sensor": {
+      "dp": [
+        8
+      ],
+      "trigger_dp": 69,
+      "trigger_payload": "ffff0001303030303030303000"
+    },
+    "volume_select": {
+      "dp": 31,
+      "dp_type": "enum",
+      "options": [
+        "mute",
+        "low",
+        "normal",
+        "high"
+      ]
+    },
+    "language_select": {
+      "dp": 28,
+      "dp_type": "enum",
+      "options": [
+        "chinese_simplified",
+        "english"
+      ]
+    },
+    "unlock_mode_select": {
+      "dp": 34,
+      "dp_type": "enum",
+      "options": [
+        "single_unlock",
+        "finger_password",
+        "finger_card",
+        "password_card"
+      ]
+    },
+    "passage_mode_switch": {
+      "dp": 33
+    },
+    "auto_lock_time_number": {
+      "dp": 36,
+      "min": 1,
+      "max": 1800
+    }
+  },
+  "event_flag": {
+    "service_uuid": "fd50",
+    "byte": 0,
+    "mask": 2
+  },
+  "services": {
+    "add_pin": {
+      "dp": 1
+    },
+    "add_fingerprint": {
+      "dp": 1
+    },
+    "add_card": {
+      "dp": 1
+    },
+    "delete_credential": {
+      "dp": 2
+    },
+    "modify_credential": {
+      "dp": 3
+    },
+    "create_temp_password": {
+      "dp": 51
+    },
+    "delete_temp_password": {
+      "dp": 52
+    },
+    "modify_temp_password": {
+      "dp": 53
+    },
+    "sync_credentials": {
+      "dp": 54
+    },
+    "remote_unlock_config": {
+      "dp": 73
+    }
+  },
+  "state_map": {
+    "8": {
+      "key": "battery_percent",
+      "parse": "int"
+    },
+    "12": {
+      "key": "unlock_fingerprint",
+      "parse": "int"
+    },
+    "13": {
+      "key": "unlock_password",
+      "parse": "int"
+    },
+    "14": {
+      "key": "unlock_dynamic",
+      "parse": "int"
+    },
+    "15": {
+      "key": "unlock_card",
+      "parse": "int"
+    },
+    "16": {
+      "key": "unlock_key",
+      "parse": "int"
+    },
+    "19": {
+      "key": "unlock_ble",
+      "parse": "int"
+    },
+    "20": {
+      "key": "lock_record",
+      "parse": "ignore"
+    },
+    "21": {
+      "key": "alarm_lock",
+      "parse": "enum_string"
+    },
+    "22": {
+      "key": "hijack",
+      "parse": "bool"
+    },
+    "24": {
+      "key": "doorbell",
+      "parse": "bool"
+    },
+    "25": {
+      "key": "message",
+      "parse": "bool"
+    },
+    "28": {
+      "key": "language",
+      "parse": "raw_byte"
+    },
+    "31": {
+      "key": "volume",
+      "parse": "raw_byte"
+    },
+    "33": {
+      "key": "auto_lock",
+      "parse": "bool"
+    },
+    "34": {
+      "key": "unlock_switch",
+      "parse": "raw_byte"
+    },
+    "36": {
+      "key": "auto_lock_time",
+      "parse": "int"
+    },
+    "40": {
+      "key": "closed_opened",
+      "parse": "enum_string"
+    },
+    "44": {
+      "key": "rtc_lock",
+      "parse": "bool"
+    },
+    "46": {
+      "key": "manual_lock",
+      "parse": "bool"
+    },
+    "47": {
+      "key": "motor_state",
+      "parse": "bool"
+    },
+    "55": {
+      "key": "unlock_temporary",
+      "parse": "int"
+    },
+    "61": {
+      "key": "remote_no_dp_key",
+      "parse": "ignore"
+    },
+    "62": {
+      "key": "unlock_phone_remote",
+      "parse": "int"
+    },
+    "63": {
+      "key": "unlock_voice_remote",
+      "parse": "int"
+    },
+    "64": {
+      "key": "password_offline_time",
+      "parse": "ignore"
+    },
+    "65": {
+      "key": "unlock_offline_clear_single",
+      "parse": "ignore"
+    },
+    "66": {
+      "key": "unlock_offline_clear",
+      "parse": "ignore"
+    },
+    "67": {
+      "key": "unlock_offline_pd",
+      "parse": "ignore"
+    },
+    "69": {
+      "key": "record",
+      "parse": "ignore"
+    },
+    "70": {
+      "key": "check_code_set",
+      "parse": "ignore"
+    },
+    "72": {
+      "key": "unlock_record_check",
+      "parse": "ignore"
+    },
+    "74": {
+      "key": "unlock_double_kit",
+      "parse": "ignore"
+    }
+  }
+}

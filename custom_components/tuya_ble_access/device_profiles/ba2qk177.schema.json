@@ -1,0 +1,860 @@
+[
+ {
+  "code": "unlock_method_create",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-a_up",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": true,
+  "name": "\u6dfb\u52a0\u5f00\u9501\u65b9\u5f0f",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 1,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_method_delete",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_rabbish",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": true,
+  "name": "\u5220\u9664\u5f00\u9501\u65b9\u5f0f",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 2,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_method_modify",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-edit",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": true,
+  "name": "\u4fee\u6539\u5f00\u9501\u65b9\u5f0f",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 3,
+  "editPermission": true
+ },
+ {
+  "code": "residual_electricity",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_battery",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u5269\u4f59\u7535\u91cf",
+  "property": {
+   "min": 0,
+   "max": 100,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 8,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_fingerprint",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u6307\u7eb9\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 12,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_password",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u5bc6\u7801\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 13,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_dynamic",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-shoushimima",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u52a8\u6001\u5bc6\u7801\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 14,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_card",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u95e8\u5361\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 15,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_key",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u673a\u68b0\u94a5\u5319\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 16,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_ble",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u84dd\u7259\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 19,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "lock_record",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u5173\u9501\u8bb0\u5f55",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 20,
+  "editPermission": false
+ },
+ {
+  "code": "alarm_lock",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_warming",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u95e8\u9501\u544a\u8b66",
+  "property": {
+   "range": [
+    "wrong_finger",
+    "wrong_password",
+    "wrong_card",
+    "wrong_face",
+    "tongue_bad",
+    "too_hot",
+    "unclosed_time",
+    "tongue_not_out",
+    "pry",
+    "key_in",
+    "low_battery",
+    "power_off",
+    "shock",
+    "defense"
+   ],
+   "type": "enum"
+  },
+  "subType": "enum",
+  "id": 21,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "hijack",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-baojing",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u52ab\u6301\u544a\u8b66",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 22,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "doorbell",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-a_power",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u95e8\u94c3\u547c\u53eb",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 24,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "message",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_email",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u77ed\u4fe1\u901a\u77e5",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 25,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "language",
+  "defaultValue": "chinese_simplified",
+  "canTrigger": true,
+  "iconname": "icon-dp_mode",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u95e8\u9501\u8bed\u8a00",
+  "property": {
+   "range": [
+    "chinese_simplified",
+    "english"
+   ],
+   "type": "enum"
+  },
+  "subType": "enum",
+  "id": 28,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "beep_volume",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-sound",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u95e8\u9501\u97f3\u91cf",
+  "property": {
+   "range": [
+    "mute",
+    "low",
+    "normal",
+    "high"
+   ],
+   "type": "enum"
+  },
+  "subType": "enum",
+  "id": 31,
+  "editPermission": true
+ },
+ {
+  "code": "automatic_lock",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-power",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u81ea\u52a8\u5173\u9501",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 33,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_switch",
+  "defaultValue": "single_unlock",
+  "canTrigger": true,
+  "iconname": "icon-dp_mode",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u53cc\u91cd\u9a8c\u8bc1",
+  "property": {
+   "range": [
+    "single_unlock",
+    "finger_password",
+    "finger_card",
+    "password_card"
+   ],
+   "type": "enum"
+  },
+  "subType": "enum",
+  "id": 34,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "auto_lock_time",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_time3",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u81ea\u52a8\u5173\u9501\u5ef6\u8fdf",
+  "property": {
+   "min": 1,
+   "max": 1800,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 36,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "closed_opened",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-zhuangtai",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u95e8\u5f00\u5408\u72b6\u6001",
+  "property": {
+   "range": [
+    "unknown",
+    "open",
+    "closed"
+   ],
+   "type": "enum"
+  },
+  "subType": "enum",
+  "id": 40,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "rtc_lock",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_time3",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u672c\u5730RTC\u65f6\u949f",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 44,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "manual_lock",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u624b\u52a8\u5173\u9501",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 46,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "lock_motor_state",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u9501\u5f00\u5408\u72b6\u6001",
+  "property": {
+   "type": "bool"
+  },
+  "subType": "bool",
+  "id": 47,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "temporary_password_creat",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_add",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u6dfb\u52a0\u4e34\u65f6\u5bc6\u7801",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 51,
+  "editPermission": true
+ },
+ {
+  "code": "temporary_password_delete",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_rabbish",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u5220\u9664\u4e34\u65f6\u5bc6\u7801",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 52,
+  "editPermission": true
+ },
+ {
+  "code": "temporary_password_modify",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-setting",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u4fee\u6539\u4e34\u65f6\u5bc6\u7801",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 53,
+  "editPermission": true
+ },
+ {
+  "code": "synch_method",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_upload",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": true,
+  "name": "\u540c\u6b65\u5f00\u9501\u65b9\u5f0f",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 54,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_temporary",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-shoushimima",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u4e34\u65f6\u5bc6\u7801\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 55,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "remote_no_dp_key",
+  "defaultValue": "",
+  "canTrigger": false,
+  "iconname": "icon-dp_lock",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u514d\u5bc6\u8fdc\u7a0b\u5f00\u9501\uff08\u5e26\u5bc6\u94a5\uff09",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 61,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_phone_remote",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-shouji",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u8fdc\u7a0b\u624b\u673a\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 62,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_voice_remote",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_mic",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u8fdc\u7a0b\u8bed\u97f3\u5f00\u9501",
+  "property": {
+   "min": 0,
+   "max": 999,
+   "scale": 0,
+   "step": 1,
+   "type": "value"
+  },
+  "subType": "value",
+  "id": 63,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "password_offline_time",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_time2",
+  "trigger": "direct",
+  "type": "obj",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u79bb\u7ebf\u5bc6\u7801\u53c2\u6570\u4e0b\u53d1",
+  "property": {
+   "type": "string",
+   "maxlen": 255
+  },
+  "subType": "string",
+  "id": 64,
+  "editPermission": true,
+  "extContent": "{\"trigger\":\"direct\"}"
+ },
+ {
+  "code": "unlock_offline_clear_single",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_upload",
+  "type": "raw",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u5355\u6761\u79bb\u7ebf\u5bc6\u7801\u6e05\u7a7a\u4e0a\u62a5",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 65,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_offline_clear",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_upload",
+  "type": "raw",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u79bb\u7ebf\u5bc6\u7801\u6e05\u7a7a\u4e0a\u62a5",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 66,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_offline_pd",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_upload",
+  "type": "raw",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u79bb\u7ebf\u5bc6\u7801\u5f00\u9501",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 67,
+  "editPermission": true
+ },
+ {
+  "code": "record",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_book",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u83b7\u53d6\u8bb0\u5f55",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 69,
+  "editPermission": true
+ },
+ {
+  "code": "check_code_set",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_mode",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u914d\u7f6e\u84dd\u7259\u5f00\u9501\u6821\u9a8c\u7801",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 70,
+  "editPermission": true
+ },
+ {
+  "code": "ble_unlock_check",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u84dd\u7259\u5f00\u9501\uff08\u5e26\u6821\u9a8c\u7801\uff09",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 71,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_record_check",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-tongji2",
+  "type": "raw",
+  "executable": true,
+  "mode": "ro",
+  "defaultRecommend": false,
+  "name": "\u5f00\u5173\u9501\u8bb0\u5f55\uff08\u5e26\u6821\u9a8c\u7801\uff09",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 72,
+  "editPermission": true
+ },
+ {
+  "code": "remote_pd_setkey_check",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-dp_lock",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": true,
+  "name": "\u8bbe\u7f6e\u8fdc\u7a0b\u5f00\u9501\uff08\u5e26\u6821\u9a8c\u7801\uff09",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 73,
+  "editPermission": true
+ },
+ {
+  "code": "unlock_double_kit",
+  "defaultValue": "",
+  "canTrigger": true,
+  "iconname": "icon-tongji2",
+  "type": "raw",
+  "executable": true,
+  "mode": "rw",
+  "defaultRecommend": false,
+  "name": "\u5168\u91cf\u7ec4\u5408\u5f00\u9501",
+  "property": {
+   "type": "raw",
+   "maxlen": 128
+  },
+  "subType": "raw",
+  "id": 74,
+  "editPermission": true
+ }
+]
