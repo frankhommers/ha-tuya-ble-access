@@ -139,10 +139,15 @@ outside this Git repository and are excluded from release artifacts.
 ## Attribution
 
 Tuya BLE Access is written and maintained by
-[frankhommers](https://github.com/frankhommers). Publicly documented Tuya BLE
-protocol work, including [redphx/python-tuya-ble](https://github.com/redphx/python-tuya-ble),
-informed the framing and crypto layers; the K3 behaviour comes from this
-project's own protocol research.
+[frankhommers](https://github.com/frankhommers). The project started from
+[tkhadimullin/tuya_ble_lock](https://github.com/tkhadimullin/tuya_ble_lock)
+and has since been substantially rewritten and extended: the hub
+architecture, V5/btScyChannel support, the K3 BLE PRO 2 profile, cloud
+credential handling, unlock attribution, the temporary-PIN lifecycle,
+the English/Dutch translations and the test suite are original work.
+Publicly documented Tuya BLE protocol work, including
+[redphx/python-tuya-ble](https://github.com/redphx/python-tuya-ble),
+informed the framing and crypto layers.
 
 ## License
 
