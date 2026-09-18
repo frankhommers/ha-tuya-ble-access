@@ -3493,3 +3493,17 @@ def test_saved_inventory_lists_and_imports_sleeping_lock_without_cloud(monkeypat
         assert result['reason'] == 'device_added'
         assert list(store.devices) == ['AA:BB:CC:DD:EE:01']
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("name", ["Gateway", "TyOS"])
+def test_known_gateway_radio_packet_does_not_offer_lock_setup(monkeypatch, name):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        store.inventory["AA:BB:CC:DD:EE:FF"] = {"category": "wg2", "product_id": "gateway"}
+        async def unexpected(*args, **kwargs):
+            raise AssertionError("Known non-lock must not start a cloud import")
+        monkeypatch.setattr(config_flow, "async_sync_cloud_inventory", unexpected)
+        result = await flow.async_step_bluetooth(_discovery(name))
+        assert result == {"type": "abort", "reason": "not_a_lock"}
+    asyncio.run(run())

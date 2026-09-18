@@ -329,6 +329,14 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Check if already known in device store
         existing_entries = self._async_current_entries()
         if existing_entries:
+            try:
+                known = (await DeviceKeyRegistry(self.hass).async_inventory()).get(self._mac)
+            except Exception:
+                return self.async_abort(reason="activation_storage_unavailable")
+            if known:
+                category = await async_resolve_category(self.hass, known)
+                if category and category not in LOCK_CATEGORIES:
+                    return self.async_abort(reason="not_a_lock")
             entry = existing_entries[0]
             self._activation_entry_id = entry.entry_id
             device_store = DeviceStore(self.hass)
