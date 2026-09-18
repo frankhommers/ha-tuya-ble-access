@@ -2,8 +2,8 @@
 
 Tuya BLE Access is a Home Assistant custom integration for local Bluetooth lock
 control. Installation and supported profiles are described in the [README](../README.md).
-The changed activation behavior and remaining physical checks for version 0.2.2
-are listed in the [release notes](releases/0.2.2.md).
+The changed activation behavior and remaining physical checks for version 0.2.3
+are listed in the [release notes](releases/0.2.3.md).
 
 ## Setup
 
@@ -22,7 +22,9 @@ a Tuya account to use this route.
 The advanced local setup option imports previously obtained credentials for an
 already-bound lock. It does not pair a new or factory-reset lock.
 Compatible unbound V5 devices also expose reactivation for previously paired
-locks. The flow looks up the MAC address in the local device records and saved
+locks. A discovered `TyOS` device first shows **Bluetooth lock found: check
+credentials**. Merely discovering it does not log in to Tuya or pair it. After
+continuing, the flow looks up the MAC address in the local device records and saved
 activation keys first. Only if neither has complete, valid credentials does it
 consult the configured Tuya account. Devices absent from that account are directed
 to app pairing; incomplete credentials never lead to Bluetooth activation.
@@ -54,6 +56,24 @@ cloud operations still use the cloud account.
 Keep the lock in Bluetooth range and close the Tuya lock panel during setup or
 troubleshooting: the phone app and HA can compete for the available connection.
 A proxy must support active GATT connections, even if it scans passively.
+
+## Which flow and when to reset
+
+| Current state | Next step | Factory reset? |
+| --- | --- | --- |
+| Lock is already paired in Tuya / Smart Life | Retrieve its keys and import it into HA; close the app panel for BLE access | No |
+| Lock was already reset and advertises as `TyOS` | Open discovery, check saved/account credentials, then separately confirm reactivation | Do not reset it again |
+| New lock with no saved or account credentials | Pair in Tuya / Smart Life first, then add to HA | Follow the manufacturer's initial setup; HA does not require a reset |
+| No discovery or Bluetooth timeout | Wake the lock near the proxy, close the app and stop competing connections | No |
+
+A factory reset deliberately erases the existing pairing/configuration. It is
+not a discovery, update, import or timeout-recovery step. Use it only when you
+intend to erase that configuration and have a recovery/setup route.
+
+The `TyOS` credential-check screen stays open with an explanation when keys
+cannot be obtained. You can retry that check without losing discovery. A
+successful check opens a separate reactivation confirmation; it never starts
+pairing by itself.
 
 ## Entities and actions
 

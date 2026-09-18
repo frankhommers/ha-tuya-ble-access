@@ -743,6 +743,14 @@ def _discovery(
     )
 
 
+async def _discover_and_check(flow, discovery):
+    """Follow discovery with the user's explicit credential-check click."""
+    result = await flow.async_step_bluetooth(discovery)
+    if result.get("step_id") == "check_device":
+        return await flow.async_step_check_device({})
+    return result
+
+
 def _new_config_flow(
     monkeypatch, hass, entry, store, *, in_progress_unique_ids=None
 ):
@@ -1746,13 +1754,13 @@ def test_bluetooth_discovery_sets_formatted_unique_id_and_deduplicates(monkeypat
             "TyOS", address="AA-BB-CC-DD-EE-FF"
         )
 
-        first_result = await first_flow.async_step_bluetooth(discovery)
+        first_result = await _discover_and_check(first_flow, discovery)
 
         assert first_result["step_id"] == "confirm_new_device"
         assert first_flow.unique_id_calls == ["aa:bb:cc:dd:ee:ff"]
         assert first_flow.abort_if_configured_calls == 1
         with pytest.raises(_FakeAbortFlow, match="already_in_progress"):
-            await second_flow.async_step_bluetooth(discovery)
+            await _discover_and_check(second_flow, discovery)
         assert second_flow.unique_id_calls == ["aa:bb:cc:dd:ee:ff"]
 
     asyncio.run(run_test())
@@ -1894,7 +1902,7 @@ def test_first_tyos_discovery_creates_only_hub_then_routes_to_confirmation(
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", fake_cloud_fetch)
 
-        discovery_result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        discovery_result = await _discover_and_check(flow, _discovery("TyOS"))
         assert discovery_result["step_id"] == "select_country"
         country_result = await flow.async_step_select_country({"country": "nl"})
         assert country_result["step_id"] == "cloud_login"
@@ -1910,7 +1918,7 @@ def test_first_tyos_discovery_creates_only_hub_then_routes_to_confirmation(
             entry_id="new-hub-entry", data=create_result["data"]
         )
         next_flow = _new_config_flow(monkeypatch, hass, hub_entry, store)
-        next_result = await next_flow.async_step_bluetooth(_discovery("tYoS"))
+        next_result = await _discover_and_check(next_flow, _discovery("tYoS"))
 
         assert next_result["type"] == "form"
         assert next_result["step_id"] == "confirm_new_device"
@@ -1933,7 +1941,7 @@ def test_first_non_tyos_discovery_keeps_bound_device_persistence(monkeypatch):
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", fake_cloud_fetch)
 
-        await flow.async_step_bluetooth(_discovery("Bound First Lock"))
+        await _discover_and_check(flow, _discovery("Bound First Lock"))
         await flow.async_step_select_country({"country": "nl"})
         result = await flow.async_step_cloud_login(
             {"email": "user@example.com", "password": "secret"}
@@ -1964,7 +1972,7 @@ def test_tyos_discovery_routes_to_local_activation_confirmation(monkeypatch):
             config_flow, "async_activate_lock", unexpected_activation, raising=False
         )
 
-        result = await flow.async_step_bluetooth(_discovery("tYoS"))
+        result = await _discover_and_check(flow, _discovery("tYoS"))
 
         assert result["type"] == "form"
         assert result["step_id"] == "confirm_new_device"
@@ -2007,7 +2015,7 @@ def test_activation_confirmation_calls_shared_orchestrator(monkeypatch):
             ),
         )
 
-        await flow.async_step_bluetooth(
+        await _discover_and_check(flow,
             _discovery("TyOS", with_encrypted_uuid=True)
         )
         refreshed_entry = _entry(password="refreshed-secret")
@@ -2060,7 +2068,7 @@ def test_activation_confirmation_rejects_changed_hub_entry(
             config_flow, "async_activate_lock", fake_activate, raising=False
         )
 
-        await flow.async_step_bluetooth(_discovery("TyOS"))
+        await _discover_and_check(flow, _discovery("TyOS"))
         flow.current_entries = current_entries
         result = await flow.async_step_confirm_new_device({})
 
@@ -2088,7 +2096,7 @@ def test_activation_confirmation_detects_concurrent_device_add(monkeypatch):
             config_flow, "async_activate_lock", fake_activate, raising=False
         )
 
-        await flow.async_step_bluetooth(_discovery("TyOS"))
+        await _discover_and_check(flow, _discovery("TyOS"))
         store.devices["AA:BB:CC:DD:EE:FF"] = {"name": "Concurrent Lock"}
         result = await flow.async_step_confirm_new_device({})
 
@@ -2123,7 +2131,7 @@ def test_activation_confirmation_maps_store_reload_failure(monkeypatch):
             config_flow, "async_activate_lock", fake_activate, raising=False
         )
 
-        await flow.async_step_bluetooth(_discovery("TyOS"))
+        await _discover_and_check(flow, _discovery("TyOS"))
         result = await flow.async_step_confirm_new_device({})
 
         assert result["type"] == "form"
@@ -2208,7 +2216,7 @@ def test_activation_confirmation_maps_errors_without_leaking_details(
             config_flow, "async_activate_lock", failing_activation, raising=False
         )
 
-        await flow.async_step_bluetooth(_discovery("TYOS"))
+        await _discover_and_check(flow, _discovery("TYOS"))
         result = await flow.async_step_confirm_new_device({})
 
         assert result["type"] == "form"
@@ -2286,7 +2294,7 @@ def test_non_tyos_bound_lock_keeps_auto_add_behavior(monkeypatch):
             config_flow, "async_activate_lock", unexpected_activation, raising=False
         )
 
-        result = await flow.async_step_bluetooth(_discovery("Bound Lock"))
+        result = await _discover_and_check(flow, _discovery("Bound Lock"))
 
         assert result == {"type": "abort", "reason": "device_added"}
         assert store.devices["AA:BB:CC:DD:EE:FF"]["name"] == "Bound Lock"
@@ -2313,7 +2321,7 @@ def test_discovered_non_lock_is_not_auto_added(monkeypatch):
             config_flow, "async_fetch_auth_key", gateway_cloud_fetch
         )
 
-        result = await flow.async_step_bluetooth(_discovery("SigMesh Gateway"))
+        result = await _discover_and_check(flow, _discovery("SigMesh Gateway"))
 
         assert result == {"type": "abort", "reason": "not_a_lock"}
         assert store.devices == {}
@@ -2337,7 +2345,7 @@ def test_discovered_lock_category_is_still_auto_added(monkeypatch):
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", lock_cloud_fetch)
 
-        result = await flow.async_step_bluetooth(_discovery("Bound Lock"))
+        result = await _discover_and_check(flow, _discovery("Bound Lock"))
 
         assert result == {"type": "abort", "reason": "device_added"}
         assert store.devices["AA:BB:CC:DD:EE:FF"]["name"] == "Bound Lock"
@@ -2948,7 +2956,7 @@ def test_domain_migration_requires_confirmation_and_preserves_config(monkeypatch
         hass.config_entries.async_entries = lambda domain: [source] if domain == "tuya_ble_lock" else []
         flow = _new_config_flow(monkeypatch, hass, source, FakeStore([]))
         flow.current_entries = []
-        form = await flow.async_step_bluetooth(_discovery("TyOS")) if discovery else await flow.async_step_user()
+        form = await _discover_and_check(flow, _discovery("TyOS")) if discovery else await flow.async_step_user()
         assert form["step_id"] == "migrate"
         assert flow.unique_id_calls == []
         result = await flow.async_step_migrate({})
@@ -2998,8 +3006,9 @@ def test_tyos_checks_account_and_keys_before_offering_activation(monkeypatch, up
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
         monkeypatch.setattr(config_flow, "async_activate_lock", activate)
-        result = await flow.async_step_bluetooth(_discovery("TyOS"))
-        assert result == {"type": "abort", "reason": reason}
+        result = await _discover_and_check(flow, _discovery("TyOS"))
+        assert result["step_id"] == "check_device"
+        assert result["errors"] == {"base": reason}
         assert calls == ["fetch"]
         assert flow._activation_seed is None
         assert store.devices == {}
@@ -3016,8 +3025,9 @@ def test_tyos_cloud_failure_is_not_reported_as_missing_pairing(monkeypatch):
             raise TimeoutError("private account details")
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
-        result = await flow.async_step_bluetooth(_discovery("TyOS"))
-        assert result == {"type": "abort", "reason": "cloud_fetch_failed"}
+        result = await _discover_and_check(flow, _discovery("TyOS"))
+        assert result["step_id"] == "check_device"
+        assert result["errors"] == {"base": "cloud_fetch_failed"}
         assert flow._activation_seed is None
 
     asyncio.run(run_test())
@@ -3039,7 +3049,7 @@ def test_activation_confirmation_reuses_checked_keys_without_logging_in_again(mo
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
         monkeypatch.setattr(config_flow, "async_activate_lock", activate)
-        shown = await flow.async_step_bluetooth(_discovery("TyOS"))
+        shown = await _discover_and_check(flow, _discovery("TyOS"))
         assert shown["step_id"] == "confirm_new_device"
         assert "abcdefghijklmnop" not in str(shown)
         assert calls == ["fetch"]
@@ -3093,7 +3103,7 @@ def test_first_lock_missing_from_account_cannot_be_added(monkeypatch, discovery_
             return {"uuid": "uuid-from-advertisement", "device_id": ""}
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", missing)
-        await flow.async_step_bluetooth(_discovery(discovery_name))
+        await _discover_and_check(flow, _discovery(discovery_name))
         await flow.async_step_select_country({"country": "nl"})
         result = await flow.async_step_cloud_login({"email": "user@example.com", "password": "secret"})
         assert result == {"type": "abort", "reason": "pair_in_app"}
@@ -3122,7 +3132,7 @@ def test_failed_pairing_is_retried_with_persisted_keys_without_cloud(monkeypatch
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
         monkeypatch.setattr(config_flow, "async_activate_lock", failing_pair)
-        await flow.async_step_bluetooth(_discovery("TyOS"))
+        await _discover_and_check(flow, _discovery("TyOS"))
         assert store.devices == {}
         result = await flow.async_step_confirm_new_device({})
         assert result["errors"] == {"base": "pairing_failed"}
@@ -3136,7 +3146,7 @@ def test_failed_pairing_is_retried_with_persisted_keys_without_cloud(monkeypatch
             raise AssertionError("Persisted activation keys must work with no cloud account")
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", unexpected_cloud)
-        result = await next_flow.async_step_bluetooth(_discovery("TyOS"))
+        result = await _discover_and_check(next_flow, _discovery("TyOS"))
         assert result["step_id"] == "confirm_local_activation"
         assert result["errors"] == {}
         await next_flow.async_step_confirm_local_activation({})
@@ -3168,7 +3178,7 @@ def test_known_reset_lock_uses_existing_record_without_cloud(monkeypatch):
 
         monkeypatch.setattr(config_flow, "async_fetch_auth_key", unexpected_cloud)
         monkeypatch.setattr(config_flow, "async_activate_lock", activate)
-        result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        result = await _discover_and_check(flow, _discovery("TyOS"))
         assert result["step_id"] == "confirm_local_activation"
         result = await flow.async_step_confirm_local_activation({})
         assert result == {"type": "abort", "reason": "device_added"}
@@ -3240,9 +3250,66 @@ def test_seed_storage_failure_prevents_activation_confirmation(monkeypatch):
                 raise OSError("private storage path")
 
         monkeypatch.setattr(config_flow, "ActivationSeedStore", lambda _hass: FailingSeedStore())
-        result = await flow.async_step_bluetooth(_discovery("TyOS"))
-        assert result == {"type": "abort", "reason": "activation_storage_unavailable"}
+        result = await _discover_and_check(flow, _discovery("TyOS"))
+        assert result["step_id"] == "check_device"
+        assert result["errors"] == {"base": "activation_storage_unavailable"}
         assert flow._activation_seed is None
         assert store.devices == {}
+
+    asyncio.run(run_test())
+
+
+def test_discovery_and_polling_do_not_fetch_keys_or_pair(monkeypatch):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+
+        async def unexpected(*_args, **_kwargs):
+            raise AssertionError("Discovery must wait for an explicit credential check")
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", unexpected)
+        monkeypatch.setattr(config_flow, "async_activate_lock", unexpected)
+        result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert result["step_id"] == "check_device"
+        assert result["errors"] == {}
+        assert await flow.async_step_check_device() == result
+        assert store.activation_seeds == {}
+        assert store.devices == {}
+
+    asyncio.run(run_test())
+
+
+def test_failed_check_remains_visible_and_can_be_retried_before_pairing(monkeypatch):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+        calls = []
+
+        async def fetch(*_args, **_kwargs):
+            calls.append("fetch")
+            if calls.count("fetch") == 1:
+                raise TimeoutError()
+            return _seed()
+
+        async def activate(*_args, **_kwargs):
+            calls.append("pair")
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
+        monkeypatch.setattr(config_flow, "async_activate_lock", activate)
+        discovered = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert discovered["step_id"] == "check_device"
+        assert calls == []
+        failed = await flow.async_step_check_device({})
+        assert failed["step_id"] == "check_device"
+        assert failed["errors"] == {"base": "cloud_fetch_failed"}
+        checked = await flow.async_step_check_device({})
+        assert checked["step_id"] == "confirm_new_device"
+        assert checked["errors"] == {}
+        assert calls == ["fetch", "fetch"]
+        added = await flow.async_step_confirm_new_device({})
+        assert added == {"type": "abort", "reason": "device_added"}
+        assert calls == ["fetch", "fetch", "pair"]
 
     asyncio.run(run_test())

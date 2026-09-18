@@ -316,12 +316,28 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if device_store.get_device(self._mac) and not self._pairing_mode_discovery:
                 return self.async_abort(reason="already_configured")
             if self._pairing_mode_discovery:
-                return await self.async_step_confirm_new_device()
+                return await self.async_step_check_device()
             # Hub exists — try auto-add using stored creds
             return await self._async_auto_add_device(entry, device_store)
 
         # No hub entry yet — start cloud login
         return await self.async_step_select_country()
+
+    async def async_step_check_device(self, user_input=None):
+        """Keep discovery visible; only check keys after an explicit user action."""
+        errors = {}
+        if user_input is not None:
+            result = await self.async_step_confirm_new_device()
+            if result.get("type") != "abort":
+                return result
+            # A failed check must remain visible and retryable, not consume discovery.
+            errors["base"] = result["reason"]
+        return self.async_show_form(
+            step_id="check_device",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={"name": self._name, "mac": self._mac},
+        )
 
     async def _async_auto_add_device(self, entry, device_store):
         """Auto-add a discovered device using the hub's cloud credentials."""

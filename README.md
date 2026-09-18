@@ -6,11 +6,11 @@ Home Assistant custom integration for local Bluetooth control of Tuya locks and
 keyboxes, by [Frank Hommers](https://github.com/frankhommers).
 This repository contains the integration, its tests and user documentation.
 
-**Version 0.2.2**. The baseline integration was validated in Home Assistant
+**Version 0.2.3**. The baseline integration was validated in Home Assistant
 2026.8.3; the revised activation flow has automated coverage and still needs a
 physical device check. Temporary
 PIN creation, validity enforcement and removal still need physical validation on
-the K3 BLE PRO 2. See [release notes](docs/releases/0.2.2.md).
+the K3 BLE PRO 2. See [release notes](docs/releases/0.2.3.md).
 
 ## Features
 
@@ -67,7 +67,9 @@ lock. Daily BLE operations do not require the app or Tuya Cloud; explicit cloud
 refresh/setup operations still contact Tuya.
 
 Compatible unbound V5 locks also have a reactivation flow. Discovery alone does
-not prove that keys are available: the flow first checks saved credentials for
+not prove that keys are available. A discovered `TyOS` device first shows a
+credential-check screen, without logging in or pairing. After you continue,
+the flow checks saved credentials for
 the MAC address, then consults the configured Tuya account only if needed.
 Reactivation is offered only after all required credentials have been checked.
 Fetched activation keys are saved before Bluetooth pairing, so a failed attempt
