@@ -82,3 +82,18 @@ def parse_dp_value(raw: bytes, parse_type: str):
     else:
         _LOGGER.warning("Unknown parse type: %s", parse_type)
         return raw.hex()
+
+
+async def async_resolve_category(hass, device: dict) -> str:
+    """Use an explicit cloud category, or an exact bundled product identity."""
+    category = str(device.get("category") or "").strip().lower()
+    if category:
+        return category
+    product_id = device.get("product_id") or device.get("productId")
+    if not product_id:
+        return ""
+    profile = await async_load_profile(hass, product_id)
+    # The generic fallback profile is not evidence that an unknown device is a lock.
+    if profile.get("product_id") != product_id:
+        return ""
+    return str(profile.get("category") or "").strip().lower()

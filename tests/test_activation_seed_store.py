@@ -51,5 +51,27 @@ def test_activation_keys_persist_by_mac_and_concurrent_saves_keep_both(monkeypat
         devices = module.DeviceStore(restarted_hass)
         await devices.async_load()
         assert devices.devices == {}
+        # Replacement preserves each complete generation, and identical reads
+        # don't grow the history. Removing an active device preserves recovery.
+        registry = module.DeviceKeyRegistry(restarted_hass)
+        old = {"local_key": "old", "category": "jtmspro", "product_id": "ba2qk177"}
+        new = {**old, "local_key": "new"}
+        await registry.async_remember("AA:BB:CC:DD:EE:01", old, source="cloud")
+        await registry.async_remember("AA:BB:CC:DD:EE:01", new, source="cloud")
+        await registry.async_remember("AA:BB:CC:DD:EE:01", new, source="cloud")
+        history_key = next(key for key in disk if key.endswith("_key_history"))
+        history = disk[history_key]["AA:BB:CC:DD:EE:01"]["history"]
+        assert [h["credentials"]["local_key"] for h in history] == ["first-key", "old", "new"]
+        await devices.async_remove_device("AA:BB:CC:DD:EE:01")
+        assert await restarted.async_get_seed("AA:BB:CC:DD:EE:01") == new
+        assert await restarted.async_get_seed("AA:BB:CC:DD:EE:02") == {"local_key": "second-key"}
+        await registry.async_remember("AA:BB:CC:DD:EE:03", {**new, "category": "wg2", "password": "must-not-persist", "dps": {"71": "private"}}, source="cloud")
+        assert await registry.async_latest("AA:BB:CC:DD:EE:03") == {}
+        record = disk[history_key]["AA:BB:CC:DD:EE:03"]["history"][0]["credentials"]
+        assert "password" not in record and "dps" not in record
+        # An incomplete newer generation stays incomplete: no mixing with old keys.
+        await registry.async_remember("AA:BB:CC:DD:EE:01", {"category": "jtmspro", "local_key": "partial"}, source="cloud")
+        assert await restarted.async_get_seed("AA:BB:CC:DD:EE:01") == {"category": "jtmspro", "local_key": "partial"}
+
 
     asyncio.run(run_test())

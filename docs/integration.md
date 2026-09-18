@@ -2,22 +2,34 @@
 
 Tuya BLE Access is a Home Assistant custom integration for local Bluetooth lock
 control. Installation and supported profiles are described in the [README](../README.md).
-The changed activation behavior and remaining physical checks for version 0.2.4
-are listed in the [release notes](releases/0.2.4.md).
+The changed activation behavior and remaining physical checks for version 0.3.0
+are listed in the [release notes](releases/0.3.0.md).
 
 ## Setup
 
-1. Pair a new lock in the **Tuya Smart** or **Smart Life** app first.
-2. Create one **Tuya BLE Access** hub via Settings → Devices & services.
-   Choose **Add a lock via Tuya / Smart Life** and sign in with the same account
-   to retrieve the lock's Bluetooth keys.
-3. Close the app's lock panel and wake the lock near a Home Assistant Bluetooth
-   adapter or proxy so Bluetooth discovery can find it.
+1. Pair a new lock in **Tuya Smart** or **Smart Life** first. Do not reset an
+   already-paired lock to add it to Home Assistant.
+2. Open **Tuya BLE Access** in Settings → Devices & services and start adding a
+   device/hub. Sign in with the same account on first setup.
+3. The import retrieves the account's devices, separate product information and
+   available Bluetooth keys in one login. Records are saved locally by MAC.
+4. Choose a recognized lock from **Add a saved lock**. A lock does not need to
+   advertise, be awake or be in Bluetooth range to appear in this list.
+5. For actual local commands, keep the lock near a Bluetooth adapter/proxy and
+   close any phone app holding its connection. Radio reachability and whether
+   the saved keys work can only be verified by communicating with the lock.
 
-To add another lock to that hub, pair it in the app with the same account, close
-its app panel and wake it near Home Assistant. Bluetooth discovery adds it to the
-existing hub. A hub using only local credentials must first be reconfigured with
-a Tuya account to use this route.
+With an existing hub, its native **Add hub** action now opens **Add a lock**:
+choose **Import devices and keys from Tuya** or **Choose a saved lock**. Importing
+populates the registry; selecting a lock creates its active HA device. The list
+shows names, MACs, product IDs, categories and key completeness, never key values.
+Unknown types stay unknown and are not offered as locks. A generic Tuya/BLE name
+is not type evidence. Product references are joined by exact product ID; no K3
+product ID is ever used as a default, including in advanced manual setup.
+
+Bluetooth discovery does not log in automatically. A previously saved bound lock
+can be imported from its local keys; an unknown bound device offers an explicit
+account import. Unbound discovery retains a separate recovery confirmation.
 
 The advanced local setup option imports previously obtained credentials for an
 already-bound lock. It does not pair a new or factory-reset lock.
@@ -44,10 +56,21 @@ normally. On connection errors, close the phone app, stop competing connections,
 and keep the lock awake near the proxy. Do not reset a lock just because it timed
 out. Daily use needs neither a reset nor repeated pairing.
 
-Activation keys are stored locally by MAC in Home Assistant's `.storage`, in
-`tuya_ble_access_devices_activation`, separately from the existing
-`tuya_ble_access_devices` device records. Back up both stores with the rest of the
-HA configuration; they contain private device keys. Saving activation credentials
+Device identities and key generations are retained without automatic expiry in
+Home Assistant's `.storage/tuya_ble_access_devices_key_history`, keyed by MAC.
+New key sets append to history; consecutive identical snapshots are deduplicated.
+Removing an active HA device does not erase this register. Existing device and
+activation records are copied into it on access without overwriting a newer
+record. A failed key fetch retains the available partial record, and failures on
+one lock do not prevent importing the other account devices. Devices without a
+valid MAC cannot be included in this MAC-indexed BLE registry.
+
+Back up this file, `tuya_ble_access_devices_activation` and
+`tuya_ble_access_devices` with the HA configuration: these stores contain private
+device keys. Account passwords and raw DP payloads are excluded from the key
+history. The latest key generation is used; old generations are retained for
+recovery but are not automatically tried or mixed. A reset or app re-pair can make
+saved keys invalid. Use an explicit cloud refresh to retrieve replacement keys. Saving activation credentials
 does not start a lock coordinator or change the device's pairing.
 
 Daily BLE commands work without the app or Tuya Cloud, while explicitly selected

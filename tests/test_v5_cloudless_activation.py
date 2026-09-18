@@ -487,7 +487,7 @@ def test_failed_account_lookup_is_not_treated_as_an_empty_account(monkeypatch):
         try:
             await client.async_find_device_by_mac("AA:BB:CC:DD:EE:FF")
         except RuntimeError as exc:
-            assert str(exc) == "Could not list Tuya homes"
+            assert str(exc) == "Could not fetch Tuya homes"
         else:
             raise AssertionError("Cloud error became an unknown lock")
         monkeypatch.setattr(client, "async_get_home_list", homes)
@@ -495,8 +495,78 @@ def test_failed_account_lookup_is_not_treated_as_an_empty_account(monkeypatch):
         try:
             await client.async_find_device_by_mac("AA:BB:CC:DD:EE:FF")
         except RuntimeError as exc:
-            assert str(exc) == "Could not list Tuya devices"
+            assert str(exc) == "Could not fetch Tuya devices"
         else:
             raise AssertionError("Cloud error became an unknown lock")
 
     asyncio.run(run_test())
+
+
+def test_account_inventory_joins_product_types_by_exact_id(monkeypatch):
+    _install_homeassistant_stubs()
+    cloud = _load_package_module('tuya_cloud')
+    async def run():
+        client = cloud.TuyaMobileAPIAsync(None)
+        async def homes():
+            return {'success': True, 'result': [{'groupId': 1}, {'groupId': 2}]}
+        async def devices(gid):
+            return {'success': True, 'result': [
+                {'devId': 'lock', 'productId': 'ba2qk177', 'mac': 'AABBCCDDEE01'},
+                {'devId': 'gateway', 'productId': 'gateway-pid', 'mac': 'AABBCCDDEE02'},
+                {'devId': 'unknown', 'productId': 'unknown-pid', 'mac': 'AABBCCDDEE03'},
+                {'devId': 'conflict', 'productId': 'ba2qk177', 'category': 'wg2'},
+            ]}
+        calls = []
+        async def product_call(action, *, version, post_data):
+            calls.append(action)
+            assert action == 'thing.m.device.ref.info.list'
+            assert post_data['productIds'] == ['ba2qk177', 'gateway-pid', 'unknown-pid']
+            return {'success': True, 'result': [
+                {'id': 'gateway-pid', 'category': 'wg2'},
+                {'id': 'ba2qk177', 'category': 'jtmspro'},
+            ]}
+        monkeypatch.setattr(client, 'async_get_home_list', homes)
+        monkeypatch.setattr(client, 'async_list_devices', devices)
+        monkeypatch.setattr(client, '_call', product_call)
+        result = await client.async_account_devices()
+        assert {d['devId']: d['category'] for d in result} == {
+            'lock': 'jtmspro', 'gateway': 'wg2', 'unknown': '', 'conflict': 'wg2',
+        }
+        assert len(calls) == 1  # Multiple homes don't repeat device/key work.
+    asyncio.run(run())
+
+
+def test_bulk_key_import_logs_in_once_and_retains_partial_failures(monkeypatch):
+    _install_homeassistant_stubs()
+    cloud = _load_package_module('tuya_cloud')
+    calls, records = [], {}
+    class Client:
+        def __init__(self, *args, **kwargs): pass
+        async def async_login(self, *args):
+            calls.append('login')
+            return {'success': True}
+        async def async_account_devices(self):
+            return [
+                {'devId': str(i), 'uuid': 'testuuid', 'productId': 'testpid',
+                 'mac': f'AABBCCDDEE0{i}', 'localKey': 'known', 'category': category}
+                for i, category in [(1, 'jtmspro'), (2, 'jtmspro'), (3, 'wg2'), (4, '')]
+            ]
+    class Registry:
+        def __init__(self, hass): pass
+        async def async_remember(self, mac, data, **kwargs):
+            records.setdefault(mac, []).append(dict(data))
+    async def category(hass, data): return data.get('category') or ''
+    async def fetch(hass, client, info, uuid, mac):
+        calls.append(mac)
+        if mac.endswith('01'): raise RuntimeError('key lookup failed')
+        return {'device_id': info['devId'], 'category': 'jtmspro', 'local_key': 'complete'}
+    monkeypatch.setattr(cloud, 'TuyaMobileAPIAsync', Client)
+    monkeypatch.setattr(cloud, '_async_fetch_device_credentials', fetch)
+    monkeypatch.setitem(sys.modules, f'{cloud.__package__}.device_store', types.SimpleNamespace(DeviceKeyRegistry=Registry))
+    monkeypatch.setitem(sys.modules, f'{cloud.__package__}.device_profiles', types.SimpleNamespace(async_resolve_category=category))
+    result = asyncio.run(cloud.async_sync_cloud_inventory(object(), 'user', 'password', '31', 'eu'))
+    assert calls == ['login', 'AA:BB:CC:DD:EE:01', 'AA:BB:CC:DD:EE:02']
+    assert len(result) == 4
+    assert result['AA:BB:CC:DD:EE:01']['key_error'] is True
+    assert records['AA:BB:CC:DD:EE:01'][0]['local_key'] == 'known'
+    assert result['AA:BB:CC:DD:EE:02']['local_key'] == 'complete'

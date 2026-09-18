@@ -248,11 +248,18 @@ def _load_config_flow_module():
     integration_const.CONF_VERIFY_KEY = "verify_key"
     device_profiles = types.ModuleType(f"{PACKAGE}.device_profiles")
     device_profiles.async_get_profile_choices = None
+    # Exercise the real classification helper against bundled product profiles.
+    profile_spec = importlib.util.spec_from_file_location("_test_profiles", ROOT / "device_profiles" / "__init__.py")
+    profile_module = importlib.util.module_from_spec(profile_spec)
+    profile_spec.loader.exec_module(profile_module)
+    device_profiles.async_resolve_category = profile_module.async_resolve_category
     device_store = types.ModuleType(f"{PACKAGE}.device_store")
     device_store.DeviceStore = object
     device_store.ActivationSeedStore = object
+    device_store.DeviceKeyRegistry = object
     tuya_cloud = types.ModuleType(f"{PACKAGE}.tuya_cloud")
     tuya_cloud.async_fetch_auth_key = None
+    tuya_cloud.async_sync_cloud_inventory = None
     activation_stub = types.ModuleType(f"{PACKAGE}.activation")
 
     class ActivationError(Exception):
@@ -576,6 +583,9 @@ class FakeConfigEntries:
 
 
 class FakeHass:
+    async def async_add_executor_job(self, func, *args):
+        return func(*args)
+
     def __init__(self, events: list[str]):
         self.data = {}
         self.config_entries = FakeConfigEntries(events)
@@ -748,6 +758,10 @@ async def _discover_and_check(flow, discovery):
     result = await flow.async_step_bluetooth(discovery)
     if result.get("step_id") == "check_device":
         return await flow.async_step_check_device({})
+    if result.get("step_id") == "sync_cloud":
+        result = await flow.async_step_sync_cloud({})
+        if result.get("step_id") == "saved_locks":
+            result = await flow.async_step_saved_locks({"device_mac": flow._mac})
     return result
 
 
@@ -756,6 +770,8 @@ def _new_config_flow(
 ):
     flow = config_flow.TuyaBLELockConfigFlow()
     flow.hass = hass
+    if not hasattr(store, "inventory"):
+        store.inventory = {}
     flow.current_entries = [entry]
     flow.unique_id_calls = []
     flow.abort_if_configured_calls = 0
@@ -766,12 +782,25 @@ def _new_config_flow(
 
     class Seeds:
         async def async_get_seed(self, mac):
-            return store.activation_seeds.get(mac.upper())
+            return store.inventory.get(mac.upper()) or store.activation_seeds.get(mac.upper())
 
         async def async_save_seed(self, mac, seed):
             store.activation_seeds[mac.upper()] = seed
 
     monkeypatch.setattr(config_flow, "ActivationSeedStore", lambda _hass: Seeds())
+
+    class Registry:
+        async def async_inventory(self):
+            return store.inventory
+    monkeypatch.setattr(config_flow, "DeviceKeyRegistry", lambda _hass: Registry())
+
+    async def default_sync(hass, email, password, country, region):
+        data = await config_flow.async_fetch_auth_key(hass, flow._uuid or "", email, password, country, region, device_mac=flow._mac or "")
+        if data.get("device_id"):
+            store.inventory[(flow._mac or "AA:BB:CC:DD:EE:FF").upper()] = data
+        return store.inventory
+    monkeypatch.setattr(config_flow, "async_sync_cloud_inventory", default_sync)
+
 
     async def default_cloud_fetch(*_args, **_kwargs):
         return _seed()
@@ -1910,9 +1939,11 @@ def test_first_tyos_discovery_creates_only_hub_then_routes_to_confirmation(
             {"email": "user@example.com", "password": "secret"}
         )
 
+        assert create_result["step_id"] == "saved_locks"
+        create_result = await flow.async_step_saved_locks({"device_mac": "AA:BB:CC:DD:EE:FF"})
         assert create_result["type"] == "create_entry"
         assert store.devices == {}
-        assert events == []
+        assert "persist" not in events
 
         hub_entry = types.SimpleNamespace(
             entry_id="new-hub-entry", data=create_result["data"]
@@ -1921,7 +1952,7 @@ def test_first_tyos_discovery_creates_only_hub_then_routes_to_confirmation(
         next_result = await _discover_and_check(next_flow, _discovery("tYoS"))
 
         assert next_result["type"] == "form"
-        assert next_result["step_id"] == "confirm_new_device"
+        assert next_result["step_id"] == "confirm_local_activation"
         assert cloud_calls == 1
         assert store.devices == {}
 
@@ -1947,6 +1978,8 @@ def test_first_non_tyos_discovery_keeps_bound_device_persistence(monkeypatch):
             {"email": "user@example.com", "password": "secret"}
         )
 
+        assert result["step_id"] == "saved_locks"
+        result = await flow.async_step_saved_locks({"device_mac": "AA:BB:CC:DD:EE:FF"})
         assert result["type"] == "create_entry"
         assert store.devices["AA:BB:CC:DD:EE:FF"]["name"] == "Bound First Lock"
         assert events.count("persist") == 1
@@ -2323,7 +2356,7 @@ def test_discovered_non_lock_is_not_auto_added(monkeypatch):
 
         result = await _discover_and_check(flow, _discovery("SigMesh Gateway"))
 
-        assert result == {"type": "abort", "reason": "not_a_lock"}
+        assert result == {"type": "abort", "reason": "no_saved_locks"}
         assert store.devices == {}
         assert hass.config_entries.reloads == []
 
@@ -3106,7 +3139,7 @@ def test_first_lock_missing_from_account_cannot_be_added(monkeypatch, discovery_
         await _discover_and_check(flow, _discovery(discovery_name))
         await flow.async_step_select_country({"country": "nl"})
         result = await flow.async_step_cloud_login({"email": "user@example.com", "password": "secret"})
-        assert result == {"type": "abort", "reason": "pair_in_app"}
+        assert result["type"] == "create_entry"  # Account saved, no lock invented.
         assert store.devices == {}
 
     asyncio.run(run_test())
@@ -3349,6 +3382,7 @@ def test_bound_advertisement_uses_import_even_with_missing_or_stale_name(monkeyp
         events = []
         store = FakeStore(events)
         flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+        store.activation_seeds["AA:BB:CC:DD:EE:FF"] = _seed()
         discovery = _discovery(name)
         discovery.service_data = {
             "0000fd50-0000-1000-8000-00805f9b34fb": bytes.fromhex("590c0008626132716b313737")
@@ -3381,3 +3415,81 @@ def test_bound_advertisement_uses_import_even_with_missing_or_stale_name(monkeyp
 )
 def test_advertised_bind_state_requires_complete_supported_header(payload, expected):
     assert config_flow._advertised_bound_state(bytes.fromhex(payload)) is expected
+
+@pytest.mark.parametrize('name', ['TyOS', 'Bound Lock'])
+@pytest.mark.parametrize('category,pid,reason', [
+    ('', 'ba2qk177', None),
+    ('', 'unknown-product', 'device_type_unknown'),
+    ('wg2', 'ba2qk177', 'not_a_lock'),
+])
+def test_missing_cloud_category_uses_exact_profile_only(monkeypatch, name, category, pid, reason):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        async def fetch(*args, **kwargs):
+            return _seed(category=category, product_id=pid)
+        monkeypatch.setattr(config_flow, 'async_fetch_auth_key', fetch)
+        result = await _discover_and_check(flow, _discovery(name))
+        if reason:
+            expected = 'no_saved_locks' if name == 'Bound Lock' else reason
+            assert result.get('reason') == expected or result.get('errors', {}).get('base') == expected
+            assert not store.devices
+        elif name == 'TyOS':
+            assert result['step_id'] == 'confirm_new_device'
+            assert store.activation_seeds
+            assert not store.devices
+        else:
+            assert result['reason'] == 'device_added'
+            assert store.devices
+    asyncio.run(run())
+
+
+def test_bound_lock_reimport_uses_saved_keys_without_account_login(monkeypatch):
+    async def run():
+        store = FakeStore([])
+        store.activation_seeds['AA:BB:CC:DD:EE:FF'] = _seed(category='', product_id='ba2qk177')
+        entry = _entry()
+        entry.data = {}
+        flow = _new_config_flow(monkeypatch, FakeHass([]), entry, store)
+        async def unexpected(*args, **kwargs):
+            raise AssertionError('Saved keys must permit cloud-free reimport')
+        monkeypatch.setattr(config_flow, 'async_fetch_auth_key', unexpected)
+        result = await _discover_and_check(flow, _discovery('Bound Lock'))
+        assert result['reason'] == 'device_added'
+    asyncio.run(run())
+
+
+def test_discovery_never_logs_in_before_explicit_inventory_import(monkeypatch):
+    async def run():
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), FakeStore([]))
+        async def unexpected(*args, **kwargs):
+            raise AssertionError('Radio discovery must not log into Tuya')
+        monkeypatch.setattr(config_flow, 'async_fetch_auth_key', unexpected)
+        monkeypatch.setattr(config_flow, 'async_sync_cloud_inventory', unexpected)
+        result = await flow.async_step_bluetooth(_discovery('Bound Lock'))
+        assert result['step_id'] == 'sync_cloud'
+    asyncio.run(run())
+
+
+def test_saved_inventory_lists_and_imports_sleeping_lock_without_cloud(monkeypatch):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        store.inventory = {
+            'AA:BB:CC:DD:EE:01': _seed(name='Sleeping Lock', product_id='ba2qk177'),
+            'AA:BB:CC:DD:EE:02': _seed(name='Gateway', category='wg2'),
+        }
+        async def unexpected(*args, **kwargs):
+            raise AssertionError('Saved selection must not contact cloud or activate Bluetooth')
+        monkeypatch.setattr(config_flow, 'async_fetch_auth_key', unexpected)
+        monkeypatch.setattr(config_flow, 'async_activate_lock', unexpected)
+        menu = await flow.async_step_user()
+        assert menu['step_id'] == 'manage'
+        form = await flow.async_step_saved_locks()
+        assert form['step_id'] == 'saved_locks'
+        assert form['description_placeholders']['count'] == '1'
+        assert form['description_placeholders']['total'] == '2'
+        result = await flow.async_step_saved_locks({'device_mac': 'AA:BB:CC:DD:EE:01'})
+        assert result['reason'] == 'device_added'
+        assert list(store.devices) == ['AA:BB:CC:DD:EE:01']
+    asyncio.run(run())

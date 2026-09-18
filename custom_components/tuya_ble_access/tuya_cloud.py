@@ -195,66 +195,84 @@ class TuyaMobileAPIAsync:
                 resp.raise_for_status()
                 return await resp.json()
 
-    async def async_find_device_by_mac(self, device_mac: str) -> dict | None:
-        """Look up device info by MAC address via cloud API.
+    async def async_account_devices(self) -> list[dict]:
+        """Fetch devices and their separate product references in one session."""
+        def result_list(response, operation):
+            if not response.get("success"):
+                raise RuntimeError(f"Could not fetch Tuya {operation}")
+            result = response.get("result", [])
+            if isinstance(result, dict):
+                result = result.get("result", [])
+            if not isinstance(result, list):
+                raise RuntimeError(f"Invalid Tuya {operation} response")
+            return result
 
-        Iterates homes and their devices, matching by MAC (case-insensitive,
-        colon-stripped). Returns dict with uuid, devId, localKey, secKey,
-        check_code, name, productId or None.
-        """
-        import base64
-        mac_clean = device_mac.replace(":", "").upper()
-        homes_resp = await self.async_get_home_list()
-        if not homes_resp.get("success"):
-            raise RuntimeError("Could not list Tuya homes")
-        homes_result = homes_resp.get("result", {})
-        if isinstance(homes_result, dict):
-            homes_result = homes_result.get("result", [])
-        for home in homes_result:
+        devices = {}
+        for home in result_list(await self.async_get_home_list(), "homes"):
             gid = home.get("groupId") or home.get("gid")
             if not gid:
                 continue
-            devs_resp = await self.async_list_devices(gid)
-            if not devs_resp.get("success"):
-                raise RuntimeError("Could not list Tuya devices")
-            devs_result = devs_resp.get("result", {})
-            if isinstance(devs_result, dict):
-                devs_result = devs_result.get("result", [])
-            for dev in devs_result:
-                dev_mac = (dev.get("mac") or "").replace(":", "").upper()
-                if dev_mac != mac_clean:
-                    continue
-                # Parse DP71 (ble_unlock_verify) for the 8-digit check code
-                check_code = ""
-                dpi = dev.get("dataPointInfo") or {}
-                if isinstance(dpi, str):
-                    try:
-                        dpi = json.loads(dpi)
-                    except Exception:
-                        dpi = {}
-                dp71 = (dpi.get("dps") or {}).get("71", "")
-                if isinstance(dp71, str) and dp71:
-                    try:
-                        raw = base64.b64decode(dp71)
-                        if len(raw) >= 12:
-                            check_code = raw[4:12].decode("ascii", errors="ignore")
-                    except Exception:
-                        pass
-                return {
-                    "uuid": dev.get("uuid", ""),
-                    "devId": dev.get("devId", ""),
-                    "localKey": dev.get("localKey", ""),
-                    "secKey": dev.get("secKey", ""),
-                    "checkCode": check_code,
-                    "name": dev.get("name", ""),
-                    "productId": dev.get("productId", ""),
-                    "category": dev.get("category", ""),
-                    # Full current DP snapshot (as reported to the cloud). Values
-                    # are either scalars (int/bool/str) or base64-encoded raw bytes
-                    # for RAW-type DPs.
-                    "dps": dpi.get("dps") or {},
-                }
+            for device in result_list(await self.async_list_devices(gid), "devices"):
+                if device.get("devId"):
+                    devices[device["devId"]] = device
+        product_ids = sorted({d["productId"] for d in devices.values() if d.get("productId")})
+        products = {}
+        for offset in range(0, len(product_ids), 20):
+            response = await self._call(
+                "thing.m.device.ref.info.list", version="5.4",
+                post_data={"productIds": product_ids[offset:offset + 20], "zigbeeGroup": True},
+            )
+            for product in result_list(response, "product information"):
+                if product.get("id"):
+                    products[product["id"]] = product
+        result = []
+        for device in devices.values():
+            product = products.get(device.get("productId"), {})
+            # Never guess a product ID. A category on the device itself wins.
+            result.append({**device, "category": device.get("category") or product.get("category", "")})
+        return result
+
+    async def async_find_device_by_mac(self, device_mac: str) -> dict | None:
+        """Find exact account MAC; product category comes from product references."""
+        target = device_mac.replace(":", "").upper()
+        for device in await self.async_account_devices():
+            if str(device.get("mac") or "").replace(":", "").upper() == target:
+                return _device_info(device)
         return None
+
+
+def _device_info(dev: dict) -> dict:
+    import base64
+    # Parse DP71 (ble_unlock_verify) for the 8-digit check code
+    check_code = ""
+    dpi = dev.get("dataPointInfo") or {}
+    if isinstance(dpi, str):
+        try:
+            dpi = json.loads(dpi)
+        except Exception:
+            dpi = {}
+    dp71 = (dpi.get("dps") or {}).get("71", "")
+    if isinstance(dp71, str) and dp71:
+        try:
+            raw = base64.b64decode(dp71)
+            if len(raw) >= 12:
+                check_code = raw[4:12].decode("ascii", errors="ignore")
+        except Exception:
+            pass
+    return {
+        "uuid": dev.get("uuid", ""),
+        "devId": dev.get("devId", ""),
+        "localKey": dev.get("localKey", ""),
+        "secKey": dev.get("secKey", ""),
+        "checkCode": check_code,
+        "name": dev.get("name", ""),
+        "productId": dev.get("productId", ""),
+        "category": dev.get("category", ""),
+        # Full current DP snapshot (as reported to the cloud). Values
+        # are either scalars (int/bool/str) or base64-encoded raw bytes
+        # for RAW-type DPs.
+        "dps": dpi.get("dps") or {},
+    }
 
 
 def _extract_verify_key(result: dict) -> str:
@@ -282,16 +300,16 @@ def _entry_creds(entry, *, new_password: str | None = None) -> tuple[str, str, s
 async def _refresh_one(
     hass: HomeAssistant, device_store, mac: str, dev: dict,
     email: str, password: str, country: str, region: str,
+    *, fetched: dict | None = None,
 ) -> bool:
     """Fetch cloud data for one device and write it back to the store.
     Returns True on success, False on any failure (non-fatal)."""
     try:
-        res = await async_fetch_auth_key(
-            hass, dev.get("uuid", "") or "",
-            email, password, country, region, device_mac=mac,
+        res = fetched if fetched is not None else await async_fetch_auth_key(
+            hass, dev.get("uuid", "") or "", email, password, country, region, device_mac=mac,
         )
-    except Exception as exc:
-        _LOGGER.warning("Cloud refresh for %s failed: %s", mac, exc)
+    except Exception:
+        _LOGGER.warning("Cloud refresh failed for %s", mac)
         return False
     updates = {
         "local_key": res.get("local_key", "") or dev.get("local_key", ""),
@@ -312,11 +330,11 @@ async def _refresh_one(
         updates["cloud_dps"] = res["dps"]
     await device_store.async_update_device(mac, **updates)
     _LOGGER.info(
-        "Refreshed %s: local_key=%s sec_key=%s check_code=%s dps=%d",
+        "Refreshed %s: local_key=%s sec_key=%s check_code_present=%s dps=%d",
         mac,
         "yes" if updates["local_key"] else "no",
         "yes" if updates["sec_key"] else "no",
-        updates.get("check_code") or "(empty)",
+        bool(updates.get("check_code")),
         len(res.get("dps") or {}),
     )
     return True
@@ -340,17 +358,22 @@ async def async_refresh_all_devices(
     email, password, country, region = _entry_creds(entry, new_password=new_password)
     device_store = DeviceStore(hass)
     await device_store.async_load()
+    inventory = await async_sync_cloud_inventory(hass, email, password, country, region)
     refreshed = 0
     for mac, dev in list(device_store.devices.items()):
+        record = inventory.get(mac)
+        if not record or record.get("key_error"):
+            continue
         if await _refresh_one(
-            hass, device_store, mac, dev, email, password, country, region,
+            hass, device_store, mac, dev, email, password, country, region, fetched=record,
         ):
             refreshed += 1
 
-    if new_password and refreshed:
+    if new_password:
         hass.config_entries.async_update_entry(
             entry,
             data={
+                **entry.data,
                 CONF_TUYA_EMAIL: email,
                 CONF_TUYA_PASSWORD: new_password,
                 CONF_TUYA_COUNTRY: country,
@@ -444,6 +467,10 @@ async def async_fetch_auth_key(
             if not resolved_uuid:
                 resolved_uuid = cloud_info.get("uuid", "")
 
+    return await _async_fetch_device_credentials(hass, client, cloud_info, resolved_uuid, device_mac)
+
+
+async def _async_fetch_device_credentials(hass, client, cloud_info, resolved_uuid, device_mac):
     if not resolved_uuid:
         raise Exception("Auth key fetch failed: no device UUID (BLE or cloud)")
 
@@ -454,7 +481,7 @@ async def async_fetch_auth_key(
         if key_resp.get("success"):
             key_info = key_resp.get("result", {}) or {}
         else:
-            _LOGGER.warning("Device keys fetch failed. Response: %s", key_resp)
+            _LOGGER.warning("Device keys fetch failed")
 
     resp = await client.async_get_ble_auth_key(resolved_uuid, device_mac=device_mac)
     if not resp.get("success"):
@@ -468,9 +495,9 @@ async def async_fetch_auth_key(
         or ""
     )
     if not auth_key:
-        _LOGGER.warning("Auth key not found in API response. Result: %s", result)
+        _LOGGER.warning("Auth key not found in API response")
 
-    return {
+    credentials = {
         "auth_key": auth_key,
         "auth_random": _extract_auth_random(result),
         "uuid": resolved_uuid,
@@ -484,3 +511,53 @@ async def async_fetch_auth_key(
         "category": cloud_info.get("category", ""),
         "dps": cloud_info.get("dps") or {},
     }
+
+    from .device_profiles import async_resolve_category
+    from .device_store import DeviceKeyRegistry
+    credentials["category"] = await async_resolve_category(hass, credentials)
+    if device_mac:
+        await DeviceKeyRegistry(hass).async_remember(device_mac, credentials, source="cloud")
+    return credentials
+
+
+async def async_sync_cloud_inventory(hass, email: str, password: str, country: str, region: str) -> dict:
+    """Bound the entire account import as well as each individual HTTP call."""
+    async with asyncio.timeout(120):
+        return await _async_sync_cloud_inventory(hass, email, password, country, region)
+
+
+async def _async_sync_cloud_inventory(hass, email: str, password: str, country: str, region: str) -> dict:
+    """Import the account once, independent of BLE range and active HA devices."""
+    from .const import LOCK_CATEGORIES
+    from .device_profiles import async_resolve_category
+    from .device_store import DeviceKeyRegistry
+    client = TuyaMobileAPIAsync(async_get_clientsession(hass), region=region)
+    login = await client.async_login(country, email, password)
+    if not login.get("success"):
+        raise RuntimeError("Tuya login failed")
+    registry = DeviceKeyRegistry(hass)
+    inventory = {}
+    for device in await client.async_account_devices():
+        raw_mac = str(device.get("mac") or "").replace(":", "").upper()
+        if len(raw_mac) != 12 or any(c not in "0123456789ABCDEF" for c in raw_mac):
+            continue
+        mac = ":".join(raw_mac[i:i + 2] for i in range(0, 12, 2))
+        info = _device_info(device)
+        category = await async_resolve_category(hass, info)
+        record = {
+            "device_id": info.get("devId", ""), "uuid": info.get("uuid", ""),
+            "product_id": info.get("productId", ""), "name": info.get("name", ""),
+            "category": category, "local_key": info.get("localKey", ""),
+            "sec_key": info.get("secKey", ""), "check_code": info.get("checkCode", ""),
+        }
+        # Preserve what was returned even if the subsequent key request fails.
+        await registry.async_remember(mac, record, source="cloud")
+        if category in LOCK_CATEGORIES and record["uuid"]:
+            try:
+                record = await _async_fetch_device_credentials(hass, client, info, record["uuid"], mac)
+            except Exception:
+                _LOGGER.warning("Could not retrieve complete Bluetooth keys for %s", mac)
+                record["key_error"] = True
+                await registry.async_remember(mac, record, source="cloud")
+        inventory[mac] = record
+    return inventory

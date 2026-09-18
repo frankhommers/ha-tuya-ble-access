@@ -1,12 +1,11 @@
 """Config flow for Tuya BLE Smart Lock — hub-based architecture.
 
 Creates one config entry backed by either a Tuya cloud account or locally
-supplied credentials. Discovered cloud locks are auto-added to the device store.
+supplied credentials. Account inventories and keys are saved before Bluetooth use.
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 
@@ -55,9 +54,9 @@ from .const import (
     CONF_VERIFY_KEY,
     LOCK_CATEGORIES,
 )
-from .device_profiles import async_get_profile_choices
-from .device_store import ActivationSeedStore, DeviceStore
-from .tuya_cloud import async_fetch_auth_key
+from .device_profiles import async_get_profile_choices, async_resolve_category
+from .device_store import ActivationSeedStore, DeviceStore, DeviceKeyRegistry
+from .tuya_cloud import async_fetch_auth_key, async_sync_cloud_inventory
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -304,7 +303,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth(self, discovery_info):
         if not self._async_current_entries() and self.hass.config_entries.async_entries("tuya_ble_lock"):
             return await self.async_step_migrate()
-        self._mac = discovery_info.address
+        self._mac = format_mac(discovery_info.address).upper()
         self._name = discovery_info.name or self._mac
         self._pairing_mode_discovery = (self._name or "").casefold() == "tyos"
         await self.async_set_unique_id(format_mac(self._mac))
@@ -361,35 +360,22 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _async_auto_add_device(self, entry, device_store):
-        """Auto-add a discovered device using the hub's cloud credentials."""
+        """Import a known bound device from saved keys; otherwise offer account import."""
         self._activation_entry_id = entry.entry_id
-        creds = entry.data
-        email = creds.get(CONF_TUYA_EMAIL, "")
-        password = creds.get(CONF_TUYA_PASSWORD, "")
-        country = creds.get(CONF_TUYA_COUNTRY, "")
-        region = creds.get(CONF_TUYA_REGION, "")
-
-        if not email or not password:
-            _LOGGER.warning(
-                "Hub entry has no cloud credentials, cannot auto-add %s", self._mac
-            )
-            return self.async_abort(reason="missing_credentials")
-
         try:
-            cloud_result = await async_fetch_auth_key(
-                self.hass,
-                self._uuid or "",
-                email,
-                password,
-                country,
-                region,
-                device_mac=self._mac or "",
-            )
+            cached = await ActivationSeedStore(self.hass).async_get_seed(self._mac)
         except Exception:
-            _LOGGER.debug(
-                "Auto-add cloud fetch failed for %s", self._mac, exc_info=True
-            )
-            return self.async_abort(reason="cloud_fetch_failed")
+            return self.async_abort(reason="activation_storage_unavailable")
+        cloud_result = None
+        if cached:
+            try:
+                cloud_result = validate_activation_seed(cached, self._uuid or "")
+            except MissingActivationSeedError:
+                pass
+        if cloud_result is None:
+            # A Bluetooth packet must never trigger an account login. Offer an
+            # explicit account import; it collects all types and keys in one session.
+            return await self.async_step_sync_cloud()
 
         if not cloud_result.get("device_id"):
             return self.async_abort(reason="pair_in_app")
@@ -397,16 +383,15 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # The BLE matcher keys on the FD50 service UUID, which every Tuya BLE
         # device advertises -- gateways included. Only adopt actual locks, or a
         # SigMesh gateway sitting next to the lock gets adopted as one.
-        category = (cloud_result.get("category") or "").lower()
+        category = await async_resolve_category(self.hass, cloud_result)
         if category not in LOCK_CATEGORIES:
-            # Only adopt a discovered device when the cloud positively confirms
-            # it is a lock. An empty/unknown category (e.g. rate-limited lookup)
-            # must NOT be adopted, or a SigMesh gateway keeps re-appearing.
+            # A cloud category or exact product profile must identify a lock.
+            # Generic Tuya advertisements and the default profile are insufficient.
             _LOGGER.debug(
                 "Not auto-adding %s: category %r is not a known lock",
                 self._mac, category or "(unknown)",
             )
-            return self.async_abort(reason="not_a_lock")
+            return self.async_abort(reason="not_a_lock" if category else "device_type_unknown")
 
         auth_key = cloud_result.get("auth_key", "")
         local_key = cloud_result.get("local_key", "")
@@ -428,6 +413,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "auth_key": auth_key,
                     "auth_random": cloud_result.get("auth_random", ""),
                     "product_id": product_id,
+                    "category": category,
                     "name": name,
                     "local_key": local_key,
                     "sec_key": cloud_result.get("sec_key", ""),
@@ -478,17 +464,15 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not email or not password:
             return self.async_abort(reason="missing_credentials")
         try:
-            async with asyncio.timeout(30):
-                cloud = await async_fetch_auth_key(
-                    self.hass, self._uuid or "", email, password, country, region,
-                    device_mac=self._mac or "",
-                )
+            inventory = await async_sync_cloud_inventory(self.hass, email, password, country, region)
+            cloud = inventory.get(self._mac.upper(), {})
         except Exception:
             return self.async_abort(reason="cloud_fetch_failed")
         if not cloud.get("device_id"):
             return self.async_abort(reason="pair_in_app")
-        if (cloud.get("category") or "").lower() not in LOCK_CATEGORIES:
-            return self.async_abort(reason="not_a_lock")
+        category = await async_resolve_category(self.hass, cloud)
+        if category not in LOCK_CATEGORIES:
+            return self.async_abort(reason="not_a_lock" if category else "device_type_unknown")
         try:
             self._activation_seed = validate_activation_seed(cloud, self._uuid or "")
         except MissingActivationSeedError:
@@ -594,14 +578,90 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Manual setup entry point."""
-        # If hub already exists, abort
         if self._async_current_entries():
-            return self.async_abort(reason="single_instance_allowed")
+            return self.async_show_menu(step_id="manage", menu_options=["saved_locks", "sync_cloud"])
         if self.hass.config_entries.async_entries("tuya_ble_lock"):
             return await self.async_step_migrate()
         return self.async_show_menu(
             step_id="user",
             menu_options=[SETUP_METHOD_CLOUD, SETUP_METHOD_LOCAL],
+        )
+
+    async def async_step_sync_cloud(self, user_input=None):
+        """Explicit account-wide synchronization, never triggered by radio discovery."""
+        entries = self._async_current_entries()
+        if not entries:
+            return await self.async_step_cloud()
+        entry = entries[0]
+        email, password, country, region = self._account_identity(entry)
+        if not email or not password:
+            return self.async_abort(reason="missing_credentials")
+        errors = {}
+        if user_input is not None:
+            try:
+                await async_sync_cloud_inventory(self.hass, email, password, country, region)
+            except Exception:
+                errors["base"] = "cloud_fetch_failed"
+            else:
+                return await self.async_step_saved_locks()
+        return self.async_show_form(step_id="sync_cloud", data_schema=vol.Schema({}), errors=errors)
+
+    async def async_step_saved_locks(self, user_input=None):
+        """Select a saved cloud lock even when it is asleep or out of range."""
+        errors = {}
+        try:
+            records = await DeviceKeyRegistry(self.hass).async_inventory()
+        except Exception:
+            return self.async_abort(reason="activation_storage_unavailable")
+        active = DeviceStore(self.hass)
+        await active.async_load()
+        choices = {}
+        summary = []
+        for mac, record in records.items():
+            category = await async_resolve_category(self.hass, record)
+            try:
+                validate_activation_seed(record)
+                key_status = "✓"
+            except MissingActivationSeedError:
+                key_status = "?"
+            summary.append(f"{record.get('name') or mac} | {category or '?'} | {record.get('product_id') or '?'} | {mac} | 🔑 {key_status}")
+            if category not in LOCK_CATEGORIES or active.get_device(mac):
+                continue
+            choices[mac] = f"{record.get('name') or mac} — {record.get('product_id') or category} — {mac}"
+        if user_input is not None:
+            mac = user_input.get(CONF_DEVICE_MAC)
+            if mac not in choices:
+                errors["base"] = "device_type_unknown"
+            else:
+                record = records[mac]
+                try:
+                    seed = validate_activation_seed(record)
+                except MissingActivationSeedError:
+                    errors["base"] = "activation_seed_missing"
+                else:
+                    observed_unbound = self._pairing_mode_discovery and self._mac == mac
+                    self._mac, self._name, self._uuid = mac, record.get("name") or mac, seed["uuid"]
+                    # Never infer a reset from absence: only a received advertisement
+                    # can establish pairing mode. Activation always needs confirmation.
+                    self._pairing_mode_discovery = observed_unbound
+                    await ActivationSeedStore(self.hass).async_save_seed(mac, seed)
+                    entries = self._async_current_entries()
+                    if entries:
+                        if observed_unbound:
+                            self._activation_entry_id = entries[0].entry_id
+                            return await self.async_step_check_device()
+                        return await self._async_auto_add_device(entries[0], active)
+                    return await self._create_hub_with_device(seed)
+        if not choices:
+            # A new hub can be saved even when the account has no importable locks.
+            if not self._async_current_entries() and self._email:
+                return await self._create_hub_entry()
+            return self.async_abort(reason="no_saved_locks")
+        return self.async_show_form(
+            step_id="saved_locks",
+            data_schema=vol.Schema({vol.Required(CONF_DEVICE_MAC): vol.In(choices)}),
+            errors=errors,
+            description_placeholders={"count": str(len(choices)), "total": str(len(records)), "inventory": "\n\n".join(summary)},
         )
 
     async def async_step_migrate(self, user_input=None):
@@ -656,12 +716,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         data={CONF_SETUP_METHOD: SETUP_METHOD_LOCAL},
                     )
 
-        default_profile = "ba2qk177" if "ba2qk177" in profile_choices else None
-        profile_key = (
-            vol.Required(CONF_PRODUCT_ID, default=default_profile)
-            if default_profile
-            else vol.Required(CONF_PRODUCT_ID)
-        )
+        profile_key = vol.Required(CONF_PRODUCT_ID)
         return self.async_show_form(
             step_id="local",
             data_schema=vol.Schema(
@@ -735,19 +790,10 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # Validate credentials by attempting a cloud call
             try:
-                if self._mac:
-                    cloud_result = await async_fetch_auth_key(
-                        self.hass,
-                        self._uuid or "",
-                        self._email,
-                        self._password,
-                        self._country,
-                        self._region,
-                        device_mac=self._mac or "",
-                    )
-                    return await self._create_hub_with_device(cloud_result)
-                else:
-                    return await self._create_hub_entry()
+                await async_sync_cloud_inventory(
+                    self.hass, self._email, self._password, self._country, self._region,
+                )
+                return await self.async_step_saved_locks()
             except Exception:
                 _LOGGER.warning("Cloud login failed", exc_info=True)
                 errors["base"] = "auth_key_failed"
@@ -765,8 +811,9 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not cloud_result.get("device_id"):
             return self.async_abort(reason="pair_in_app")
         if self._pairing_mode_discovery:
-            if (cloud_result.get("category") or "").lower() not in LOCK_CATEGORIES:
-                return self.async_abort(reason="not_a_lock")
+            category = await async_resolve_category(self.hass, cloud_result)
+            if category not in LOCK_CATEGORIES:
+                return self.async_abort(reason="not_a_lock" if category else "device_type_unknown")
             try:
                 validate_activation_seed(cloud_result, self._uuid or "")
             except MissingActivationSeedError:
@@ -776,7 +823,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # The BLE matcher keys on the FD50 service UUID, which every Tuya BLE
         # device advertises -- gateways included. Only adopt actual locks, or a
         # SigMesh gateway sitting next to the lock gets adopted as one.
-        category = (cloud_result.get("category") or "").lower()
+        category = await async_resolve_category(self.hass, cloud_result)
         if category not in LOCK_CATEGORIES:
             _LOGGER.debug(
                 "Not adopting %s as a lock: category %r",
@@ -807,6 +854,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "auth_key": auth_key,
                     "auth_random": cloud_result.get("auth_random", ""),
                     "product_id": product_id,
+                    "category": category,
                     "name": name,
                     "local_key": local_key,
                     "sec_key": cloud_result.get("sec_key", ""),
