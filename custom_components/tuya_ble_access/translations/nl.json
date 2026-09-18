@@ -2,15 +2,16 @@
   "config": {
     "step": {
       "user": {
-        "title": "Tuya BLE Access instellen",
+        "title": "Slot toevoegen",
         "menu_options": {
-          "cloud": "Tuya Cloud-account",
-          "local": "Lokale verbindingsgegevens"
-        }
+          "cloud": "Slot toevoegen via Tuya / Smart Life",
+          "local": "Bestaande Bluetooth-sleutels importeren (geavanceerd)"
+        },
+        "description": "Koppel een nieuw slot eerst in de Tuya Smart- of Smart Life-app. Kies daarna hieronder je Tuya-account om de Bluetooth-sleutels op te halen. Dagelijks gebruik in Home Assistant werkt lokaal via Bluetooth, zonder de app of Tuya Cloud."
       },
       "local": {
         "title": "Een al gekoppeld slot importeren",
-        "description": "Voer de Bluetooth-verbindingsgegevens in van een slot dat al gekoppeld is. De integratie slaat deze lokaal op en maakt geen verbinding met Tuya Cloud.",
+        "description": "Voer eerder verkregen Bluetooth-verbindingsgegevens in van een al gekoppeld slot. Hiermee importeer je een bestaande koppeling; je koppelt geen nieuw of gereset slot. De integratie slaat deze gegevens lokaal op en maakt geen verbinding met Tuya Cloud.",
         "data": {
           "name": "Naam van het slot",
           "device_mac": "Bluetooth-MAC-adres",
@@ -27,14 +28,14 @@
       },
       "select_country": {
         "title": "Land selecteren",
-        "description": "Selecteer je land om de Tuya Cloud-regio en landcode automatisch in te stellen.",
+        "description": "Koppel je slot eerst in de Tuya Smart- of Smart Life-app. Selecteer daarna het land van dat account om de Tuya Cloud-regio en landcode in te stellen.",
         "data": {
           "country": "Land"
         }
       },
       "cloud_login": {
         "title": "Tuya Cloud-accountgegevens",
-        "description": "Voer je accountgegevens van Tuya Smart of Smart Life in om de versleutelingssleutels van je sloten op te halen.\n\nDatacentrum: {region}",
+        "description": "Koppel je slot eerst in de Tuya Smart- of Smart Life-app. Meld je hier daarna aan met hetzelfde account om de Bluetooth-sleutels op te halen. Sluit het slotpaneel in de app en maak het slot wakker in de buurt van een Bluetooth-adapter of -proxy van Home Assistant. Dagelijks gebruik werkt lokaal, zonder de app of Tuya Cloud.\n\nDatacentrum: {region}",
         "data": {
           "email": "E-mailadres",
           "password": "Wachtwoord",
@@ -62,20 +63,24 @@
         }
       },
       "confirm_new_device": {
-        "title": "Nieuw slot gevonden",
-        "description": "Er is een nieuw Tuya BLE-slot gevonden: {name} ({mac}). Herstel de fabrieksinstellingen van het slot en activeer het zodat het een Bluetooth-signaal blijft uitzenden. Verzend daarna dit formulier om het lokaal via Bluetooth te activeren. Houd het slot dicht bij een Bluetooth-adapter of -proxy van Home Assistant."
+        "title": "Slot heractiveren met gecontroleerde Tuya-gegevens",
+        "description": "{name} ({mac}) is gevonden in koppelmodus. Dit apparaat staat in je Tuya-account en alle benodigde activeringsgegevens zijn opgehaald en gecontroleerd. De Bluetooth-koppeling is nog niet gestart.\n\nGa verder om dit slot met die gegevens opnieuw te activeren. Sluit de Tuya / Smart Life-app en verbreek verbindingen van andere systemen met het slot. Houd het wakker bij een Bluetooth-adapter of -proxy van Home Assistant. Op de eerste Bluetooth-reactie wordt maximaal 45 seconden gewacht; bij mislukken verschijnt een foutmelding. Deze stap vereist geen fabrieksreset."
       },
       "migrate": {
         "title": "Bestaande integratie overnemen",
         "description": "Neem de bestaande Tuya BLE Lock-hub over. Apparaten, entiteit-ID’s, lokale sleutels en ingeleerde credentials blijven behouden. De oude integratie wordt verwijderd. Acties en events in automatiseringen moet je wijzigen van tuya_ble_lock naar tuya_ble_access. Maak eerst een Home Assistant-back-up."
+      },
+      "confirm_local_activation": {
+        "title": "Slot heractiveren met opgeslagen sleutels",
+        "description": "Voor {name} ({mac}) zijn lokaal opgeslagen activeringsgegevens beschikbaar en gecontroleerd. Deze poging gebruikt geen Tuya Cloud. Of de sleutels nog werken, wordt via Bluetooth gecontroleerd.\n\nSluit de Tuya / Smart Life-app en verbreek verbindingen van andere systemen met het slot. Houd het slot wakker bij een Bluetooth-adapter of -proxy van Home Assistant en bevestig om het opnieuw te activeren. Op de eerste Bluetooth-reactie wordt maximaal 45 seconden gewacht. Deze stap vereist geen fabrieksreset."
       }
     },
     "error": {
       "auth_key_failed": "Kan geen verbinding maken met Tuya Cloud. Controleer je accountgegevens, land en regio.",
-      "activation_seed_missing": "Tuya Cloud heeft niet alle gegevens voor lokale activering geleverd. Controleer of het slot bij dit account hoort, herstel de fabrieksinstellingen en activeer het slot voordat je het opnieuw probeert.",
+      "activation_seed_missing": "Tuya Cloud heeft niet alle gegevens voor heractivering geleverd. Koppel een nieuw slot eerst in Tuya Smart of Smart Life met hetzelfde account en voeg het daarna via Bluetooth-detectie toe. Controleer bij een eerder gekoppeld slot of de verbindingsgegevens nog beschikbaar zijn in dat account.",
       "bluetooth_unavailable": "Het slot is momenteel niet bereikbaar via lokale Bluetooth. Activeer het, houd het dicht bij een Bluetooth-adapter of -proxy van Home Assistant en probeer het opnieuw.",
-      "device_already_bound": "Het slot meldt dat het al gekoppeld is. Herstel de fabrieksinstellingen, activeer het slot en probeer opnieuw lokaal te koppelen.",
-      "pairing_failed": "Het slot heeft de lokale Bluetooth-koppeling niet geaccepteerd of voltooid. Controleer of de fabrieksinstellingen zijn hersteld, activeer het slot en probeer het opnieuw.",
+      "device_already_bound": "Het slot is al gekoppeld. Sluit deze flow en maak het slot wakker voor Bluetooth-detectie met hetzelfde Tuya-account om het normaal toe te voegen. Herstel de fabrieksinstellingen alleen als je de bestaande koppeling wilt vervangen.",
+      "pairing_failed": "De Bluetooth-koppeling kon niet worden voltooid. Sluit de Tuya / Smart Life-app en verbreek verbindingen van andere systemen met het slot. Houd het slot wakker bij de Bluetooth-adapter of -proxy en probeer het opnieuw. Een timeout betekent niet dat een fabrieksreset nodig is.",
       "bind_verification_failed": "De Bluetooth-koppeling is voltooid, maar kon niet worden geverifieerd. Houd het slot actief en dichtbij en probeer het opnieuw.",
       "activation_cloud_fetch_failed": "Kan de activeringsgegevens niet ophalen uit Tuya Cloud. Controleer de netwerkverbinding en accountinstellingen.",
       "activation_storage_unavailable": "De lokale opslag van verbindingsgegevens is niet beschikbaar. De activering is daarom niet gestart. Probeer het later opnieuw.",
@@ -88,14 +93,17 @@
     },
     "abort": {
       "already_configured": "Dit slot is al ingesteld.",
-      "single_instance_allowed": "Er is al een Tuya BLE Access-hub ingesteld. Nieuwe sloten worden automatisch toegevoegd via Bluetooth-detectie.",
+      "single_instance_allowed": "Er is al een Tuya BLE Access-hub ingesteld. Koppel een extra slot eerst in Tuya Smart of Smart Life met het account van de hub. Sluit het slotpaneel in de app en maak het slot wakker bij een Bluetooth-adapter of -proxy van Home Assistant; Bluetooth-detectie voegt het toe aan de bestaande hub. Voor deze route moet een hub met alleen lokale verbindingsgegevens eerst een Tuya-account krijgen.",
       "device_added": "Het slot is toegevoegd en verschijnt zo meteen.",
       "missing_credentials": "De hub heeft geen cloud-accountgegevens. Stel de integratie opnieuw in.",
       "cloud_fetch_failed": "Kan de apparaatgegevens niet ophalen uit Tuya Cloud. Het slot is mogelijk niet gekoppeld aan je Tuya-app-account.",
       "reauth_successful": "Opnieuw aanmelden is gelukt. De Bluetooth-sleutels van alle sloten zijn vernieuwd.",
       "local_entry_no_reconfigure": "Deze hub gebruikt lokale verbindingsgegevens en heeft geen Tuya Cloud-account om opnieuw in te stellen.",
       "not_a_lock": "Dit Tuya-apparaat is geen slot en is daarom niet toegevoegd.",
-      "legacy_migration_unavailable": "Migratie vereist precies één ingeschakelde Tuya BLE Lock-hub met configuratieversie 2. Werk de oude integratie eerst bij en schakel de hub in."
+      "legacy_migration_unavailable": "Migratie vereist precies één ingeschakelde Tuya BLE Lock-hub met configuratieversie 2. Werk de oude integratie eerst bij en schakel de hub in.",
+      "pair_in_app": "Dit apparaat heeft geen bruikbare koppelgegevens in dit Tuya-account. Koppel het eerst in Tuya Smart of Smart Life met hetzelfde account. Sluit daarna het slotpaneel in de app en maak het slot wakker bij Home Assistant voor Bluetooth-detectie. Er is geen Bluetooth-activering geprobeerd.",
+      "activation_seed_missing": "Dit slot staat in je Tuya-account, maar de activeringsgegevens zijn onvolledig of ongeldig. De Bluetooth-activering is niet gestart. Voltooi de koppeling in Tuya Smart of Smart Life met hetzelfde account en laat Home Assistant het slot opnieuw detecteren. Herstel de fabrieksinstellingen niet om ontbrekende gegevens op te lossen.",
+      "activation_storage_unavailable": "De lokale activeringsgegevens konden niet worden gelezen of opgeslagen. De Bluetooth-activering is niet gestart. Controleer de opslag van Home Assistant en probeer het opnieuw."
     }
   },
   "entity": {

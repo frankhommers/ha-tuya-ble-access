@@ -400,3 +400,103 @@ if __name__ == "__main__":
             failures.append((name, exc))
             print(f"ERROR {name}: {exc!r}")
     sys.exit(1 if failures else 0)
+
+
+def test_bluetooth_device_info_deadline_does_not_send_pair(monkeypatch):
+    _install_homeassistant_stubs()
+    _install_ble_stubs()
+    ble_session = _load_package_module("ble_session")
+    real_timeout = asyncio.timeout
+
+    async def run_test():
+        session = _new_v5_session(ble_session)
+        cancelled = asyncio.Event()
+        deadlines = []
+
+        async def stalled_connect():
+            try:
+                await asyncio.Future()
+            finally:
+                cancelled.set()
+
+        async def unexpected_pair(*_args, **_kwargs):
+            raise AssertionError("A device-info timeout must never send PAIR")
+
+        def short_timeout(seconds):
+            deadlines.append(seconds)
+            return real_timeout(0.01)
+
+        monkeypatch.setattr(ble_session.asyncio, "timeout", short_timeout)
+        session._connect_for_pairing = stalled_connect
+        session._send_recv = unexpected_pair
+        try:
+            await session._async_pair_first_activation_v5()
+        except ble_session.PairingFailedError as exc:
+            assert "no PAIR command was sent" in str(exc)
+        else:
+            raise AssertionError("The Bluetooth deadline was not enforced")
+        assert deadlines == [45]
+        assert cancelled.is_set()
+
+    asyncio.run(run_test())
+
+
+def test_unknown_account_device_does_not_fetch_authentication_key(monkeypatch):
+    _install_homeassistant_stubs()
+    tuya_cloud = _load_package_module("tuya_cloud")
+    calls = []
+
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def async_login(self, *_args):
+            calls.append("login")
+            return {"success": True}
+
+        async def async_find_device_by_mac(self, _mac):
+            calls.append("lookup")
+            return None
+
+        async def async_get_ble_auth_key(self, *_args, **_kwargs):
+            raise AssertionError("Unknown account device must not fetch an auth key")
+
+    monkeypatch.setattr(tuya_cloud, "TuyaMobileAPIAsync", Client)
+    result = asyncio.run(tuya_cloud.async_fetch_auth_key(
+        object(), "advertised-uuid", "user@example.com", "password", "31", "eu",
+        device_mac="AA:BB:CC:DD:EE:FF",
+    ))
+    assert result == {"uuid": "advertised-uuid", "device_id": ""}
+    assert calls == ["login", "lookup"]
+
+
+def test_failed_account_lookup_is_not_treated_as_an_empty_account(monkeypatch):
+    _install_homeassistant_stubs()
+    tuya_cloud = _load_package_module("tuya_cloud")
+
+    async def run_test():
+        client = tuya_cloud.TuyaMobileAPIAsync(None)
+
+        async def homes():
+            return {"success": True, "result": [{"groupId": 1}]}
+
+        async def failed(*_args):
+            return {"success": False}
+
+        monkeypatch.setattr(client, "async_get_home_list", failed)
+        try:
+            await client.async_find_device_by_mac("AA:BB:CC:DD:EE:FF")
+        except RuntimeError as exc:
+            assert str(exc) == "Could not list Tuya homes"
+        else:
+            raise AssertionError("Cloud error became an unknown lock")
+        monkeypatch.setattr(client, "async_get_home_list", homes)
+        monkeypatch.setattr(client, "async_list_devices", failed)
+        try:
+            await client.async_find_device_by_mac("AA:BB:CC:DD:EE:FF")
+        except RuntimeError as exc:
+            assert str(exc) == "Could not list Tuya devices"
+        else:
+            raise AssertionError("Cloud error became an unknown lock")
+
+    asyncio.run(run_test())

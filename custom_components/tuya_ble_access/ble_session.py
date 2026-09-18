@@ -933,10 +933,8 @@ class TuyaBLELockSession:
             await asyncio.sleep(2.0)
         return False
 
-    async def _async_pair_first_activation_v5(self) -> tuple[bytes, bytes]:
-        if not self._auth_key or not self._auth_random or not self._local_key or not self._sec_key:
-            raise PairingFailedError("Missing V5 activation seed data")
-
+    async def _get_activation_device_info(self):
+        """Read device info before any PAIR command; safe to time out here."""
         info = None
         for attempt in range(5):
             _LOGGER.info("V5 pair attempt %d/5: connecting...", attempt + 1)
@@ -956,8 +954,21 @@ class TuyaBLELockSession:
 
         if not info:
             raise PairingFailedError(
-                "No V5 device info response after 5 attempts; refresh cloud seed or factory reset."
+                "No V5 device info response; check Bluetooth reachability and competing connections."
             )
+        return info
+
+    async def _async_pair_first_activation_v5(self) -> tuple[bytes, bytes]:
+        if not self._auth_key or not self._auth_random or not self._local_key or not self._sec_key:
+            raise PairingFailedError("Missing V5 activation seed data")
+
+        try:
+            async with asyncio.timeout(45):
+                info = await self._get_activation_device_info()
+        except TimeoutError as exc:
+            raise PairingFailedError(
+                "Bluetooth device info timed out after 45 seconds; no PAIR command was sent."
+            ) from exc
         if info["is_bound"]:
             raise DeviceAlreadyBoundError("Lock is already bound; factory reset required for first activation")
 

@@ -2,15 +2,16 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up Tuya BLE Access",
+        "title": "Add a lock",
         "menu_options": {
-          "cloud": "Tuya Cloud account",
-          "local": "Local credentials"
-        }
+          "cloud": "Add a lock via Tuya / Smart Life",
+          "local": "Import existing Bluetooth keys (advanced)"
+        },
+        "description": "For a new lock, first pair it in the Tuya Smart or Smart Life app. Then choose your Tuya account below to retrieve its Bluetooth keys. Daily use in Home Assistant works locally over Bluetooth without the app or Tuya Cloud."
       },
       "local": {
         "title": "Import an already-bound lock",
-        "description": "Enter the BLE credentials for a lock that is already bound. The integration stores these locally and does not contact Tuya Cloud.",
+        "description": "Enter previously obtained Bluetooth credentials for an already-bound lock. This imports an existing pairing; it does not pair a new or factory-reset lock. The integration stores these credentials locally and does not contact Tuya Cloud.",
         "data": {
           "name": "Lock name",
           "device_mac": "Bluetooth MAC address",
@@ -27,14 +28,14 @@
       },
       "select_country": {
         "title": "Select Country",
-        "description": "Choose your country to automatically configure the correct Tuya cloud region and country code.",
+        "description": "First pair your lock in the Tuya Smart or Smart Life app. Then select the country used for that account to configure its Tuya Cloud region and country code.",
         "data": {
           "country": "Country"
         }
       },
       "cloud_login": {
         "title": "Tuya Cloud Credentials",
-        "description": "Enter your Tuya Smart or Smart Life app credentials to fetch the encryption keys for your locks.\n\nData center: {region}",
+        "description": "First pair your lock in the Tuya Smart or Smart Life app, then sign in here with the same account to retrieve its Bluetooth keys. Close the lock panel in the app and wake the lock near a Home Assistant Bluetooth adapter or proxy. Daily use works locally without the app or Tuya Cloud.\n\nData center: {region}",
         "data": {
           "email": "Email",
           "password": "Password",
@@ -43,8 +44,8 @@
         }
       },
       "confirm_new_device": {
-        "title": "New Lock Found",
-        "description": "A new Tuya BLE lock was found: {name} ({mac}). Factory-reset the lock and wake it so it keeps advertising, then submit this form to activate it locally over Bluetooth. Keep the lock close to a Home Assistant Bluetooth adapter or proxy."
+        "title": "Reactivate a lock with verified Tuya credentials",
+        "description": "Found {name} ({mac}) advertising in pairing mode. This device was found in your Tuya account and all required activation credentials have been retrieved and checked. Bluetooth pairing has not started yet.\n\nContinue to reactivate this lock using those credentials. Close the Tuya / Smart Life app and disconnect other systems using the lock. Keep it awake near a Home Assistant Bluetooth adapter or proxy. The initial Bluetooth response is allowed up to 45 seconds; if it fails, an error will appear. No factory reset is required by this step."
       },
       "reauth_confirm": {
         "title": "Re-authenticate Tuya account",
@@ -68,14 +69,18 @@
       "migrate": {
         "title": "Migrate the existing integration",
         "description": "Take over the existing Tuya BLE Lock hub. Devices, entity IDs, local keys and enrolled credentials are preserved. The old integration is removed. Update automation actions and events from tuya_ble_lock to tuya_ble_access. Back up Home Assistant first."
+      },
+      "confirm_local_activation": {
+        "title": "Reactivate a lock with saved keys",
+        "description": "Locally saved activation credentials for {name} ({mac}) are available and have been checked. This attempt does not contact Tuya Cloud. Bluetooth communication will verify whether the keys still work.\n\nClose the Tuya / Smart Life app and disconnect other systems using the lock. Keep it awake near a Home Assistant Bluetooth adapter or proxy and confirm to reactivate it. The initial Bluetooth response is allowed up to 45 seconds. No factory reset is required by this step."
       }
     },
     "error": {
       "auth_key_failed": "Could not connect to Tuya cloud. Check your credentials, country, and region.",
-      "activation_seed_missing": "Tuya cloud did not provide all data required for local activation. Check that the lock belongs to this account, then factory-reset and wake it before trying again.",
+      "activation_seed_missing": "Tuya Cloud did not provide all credentials required for reactivation. For a new lock, pair it in Tuya Smart or Smart Life with the same account first, then use Bluetooth discovery to add it. For a previously paired lock, check that its credentials are still available in that account.",
       "bluetooth_unavailable": "The lock is not currently reachable over local Bluetooth. Wake it, keep it near a Home Assistant Bluetooth adapter or proxy, and try again.",
-      "device_already_bound": "The lock reports that it is already bound. Factory-reset it, wake it, and try local Bluetooth activation again.",
-      "pairing_failed": "The lock did not accept or complete local Bluetooth pairing. Confirm it was factory-reset, wake it, and try again.",
+      "device_already_bound": "The lock is already paired. To add it normally, close this flow and wake the lock for Bluetooth discovery using the same Tuya account. A factory reset is only needed if you intend to replace its existing pairing.",
+      "pairing_failed": "Bluetooth pairing could not be completed. Close the Tuya / Smart Life app and disconnect other systems using the lock. Keep the lock awake near the Bluetooth adapter or proxy, then try again. A timeout does not mean a factory reset is needed.",
       "bind_verification_failed": "Bluetooth pairing completed, but the lock's bound state could not be verified. Keep it awake and nearby, then try again.",
       "activation_cloud_fetch_failed": "Could not fetch activation data from Tuya cloud. Check the network and account configuration, then try again.",
       "activation_storage_unavailable": "Local credential storage is unavailable, so activation was not started. Try again later.",
@@ -88,14 +93,17 @@
     },
     "abort": {
       "already_configured": "This lock is already configured.",
-      "single_instance_allowed": "A Tuya BLE Access hub is already configured. New locks are added automatically via Bluetooth discovery.",
+      "single_instance_allowed": "A Tuya BLE Access hub is already configured. To add another lock, first pair it in Tuya Smart or Smart Life using the hub’s account. Close the app’s lock panel, then wake the lock near a Home Assistant Bluetooth adapter or proxy; Bluetooth discovery adds it to the existing hub. A hub using only local credentials needs a Tuya account configured for this route.",
       "device_added": "Lock added successfully. It will appear shortly.",
       "missing_credentials": "Hub entry has no cloud credentials. Please reconfigure the integration.",
       "cloud_fetch_failed": "Could not fetch device info from Tuya cloud. The lock may not be paired to your Tuya app account.",
       "reauth_successful": "Re-authentication successful. BLE keys refreshed for all locks.",
       "local_entry_no_reconfigure": "This hub uses local credentials and has no Tuya Cloud account to reconfigure.",
       "not_a_lock": "This Tuya device is not a lock, so it was not added.",
-      "legacy_migration_unavailable": "Migration requires exactly one enabled Tuya BLE Lock hub with configuration version 2. Update the old integration first and enable the hub."
+      "legacy_migration_unavailable": "Migration requires exactly one enabled Tuya BLE Lock hub with configuration version 2. Update the old integration first and enable the hub.",
+      "pair_in_app": "This device does not have usable pairing details in this Tuya account. Pair it in Tuya Smart or Smart Life with the same account first. Then close the app’s lock panel and wake the lock near Home Assistant for Bluetooth discovery. No Bluetooth activation was attempted.",
+      "activation_seed_missing": "This lock was found in your Tuya account, but its activation credentials are incomplete or invalid. Bluetooth activation was not started. Complete pairing in Tuya Smart or Smart Life with the same account and let Home Assistant discover the lock again. Do not factory-reset it to fix missing credentials.",
+      "activation_storage_unavailable": "Local activation credentials could not be read or saved. Bluetooth activation was not started. Check Home Assistant storage and try again."
     }
   },
   "entity": {

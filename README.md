@@ -6,9 +6,11 @@ Home Assistant custom integration for local Bluetooth control of Tuya locks and
 keyboxes, by [Frank Hommers](https://github.com/frankhommers).
 This repository contains the integration, its tests and user documentation.
 
-**Version 0.2.1**, validated in Home Assistant 2026.8.3. Temporary
+**Version 0.2.2**. The baseline integration was validated in Home Assistant
+2026.8.3; the revised activation flow has automated coverage and still needs a
+physical device check. Temporary
 PIN creation, validity enforcement and removal still need physical validation on
-the K3 BLE PRO 2. See [release notes](docs/releases/0.2.1.md).
+the K3 BLE PRO 2. See [release notes](docs/releases/0.2.2.md).
 
 ## Features
 
@@ -53,13 +55,29 @@ the integration. The directory must end up at
 
 ## Setup and daily use
 
-The setup flow offers a Tuya/Smart Life cloud account or local credentials. Cloud
-setup retrieves the device's BLE credentials. Local setup imports credentials
-already obtained for the lock. Daily BLE operations do not require Tuya Cloud;
-explicit cloud refresh/setup operations still contact Tuya.
+For a new lock, **first pair it in the Tuya Smart or Smart Life app**. In the
+integration's **Add a lock** flow, choose **Add a lock via Tuya / Smart Life**
+and sign in with the same account to retrieve its Bluetooth keys. Close the
+app's lock panel and wake the lock near a Home Assistant Bluetooth adapter or
+proxy. Additional locks are added to the existing hub through Bluetooth discovery
+after pairing them with the same account.
 
-Compatible unbound V5 locks also have local activation entry points. Activation
-changes pairing state; use the HA flow's instructions for the selected device.
+The advanced local option imports keys already obtained for an already-bound
+lock. Daily BLE operations do not require the app or Tuya Cloud; explicit cloud
+refresh/setup operations still contact Tuya.
+
+Compatible unbound V5 locks also have a reactivation flow. Discovery alone does
+not prove that keys are available: the flow first checks saved credentials for
+the MAC address, then consults the configured Tuya account only if needed.
+Reactivation is offered only after all required credentials have been checked.
+Fetched activation keys are saved before Bluetooth pairing, so a failed attempt
+can be retried without another cloud login, including after a HA restart.
+The confirmation says whether the keys came from local storage or Tuya Cloud.
+
+Stored credentials enable cloud-free reactivation attempts; Bluetooth must still
+verify that the device accepts them. This does not bypass initial app pairing
+for a new lock. The flow does not instruct you to factory-reset a discovered lock.
+Activation changes pairing state only after confirmation.
 
 The integration groups locks under one hub. See the
 [integration guide](docs/integration.md) and

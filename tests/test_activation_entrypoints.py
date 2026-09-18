@@ -250,6 +250,7 @@ def _load_config_flow_module():
     device_profiles.async_get_profile_choices = None
     device_store = types.ModuleType(f"{PACKAGE}.device_store")
     device_store.DeviceStore = object
+    device_store.ActivationSeedStore = object
     tuya_cloud = types.ModuleType(f"{PACKAGE}.tuya_cloud")
     tuya_cloud.async_fetch_auth_key = None
     activation_stub = types.ModuleType(f"{PACKAGE}.activation")
@@ -282,7 +283,8 @@ def _load_config_flow_module():
         pass
 
     activation_stub.ActivationError = ActivationError
-    activation_stub.MissingActivationSeedError = MissingActivationSeedError
+    activation_stub.MissingActivationSeedError = activation.MissingActivationSeedError
+    activation_stub.validate_activation_seed = activation.validate_activation_seed
     activation_stub.BluetoothUnavailableError = BluetoothUnavailableError
     activation_stub.DeviceAlreadyBoundActivationError = DeviceAlreadyBoundActivationError
     activation_stub.PairingFailedActivationError = PairingFailedActivationError
@@ -660,6 +662,7 @@ class FakeStore:
     def __init__(self, events: list[str]):
         self.events = events
         self.devices: dict[str, dict] = {}
+        self.activation_seeds = {}
 
     async def async_load(self) -> None:
         self.events.append("load")
@@ -752,6 +755,20 @@ def _new_config_flow(
         in_progress_unique_ids if in_progress_unique_ids is not None else set()
     )
     monkeypatch.setattr(config_flow, "DeviceStore", lambda _hass: store)
+
+    class Seeds:
+        async def async_get_seed(self, mac):
+            return store.activation_seeds.get(mac.upper())
+
+        async def async_save_seed(self, mac, seed):
+            store.activation_seeds[mac.upper()] = seed
+
+    monkeypatch.setattr(config_flow, "ActivationSeedStore", lambda _hass: Seeds())
+
+    async def default_cloud_fetch(*_args, **_kwargs):
+        return _seed()
+
+    monkeypatch.setattr(config_flow, "async_fetch_auth_key", default_cloud_fetch)
     return flow
 
 
@@ -1937,7 +1954,7 @@ def test_tyos_discovery_routes_to_local_activation_confirmation(monkeypatch):
         flow = _new_config_flow(monkeypatch, hass, _entry(), store)
 
         async def unexpected_cloud_fetch(*_args, **_kwargs):
-            raise AssertionError("TyOS discovery must not use bound-device auto-add")
+            return _seed()
 
         async def unexpected_activation(*_args, **_kwargs):
             raise AssertionError("showing the confirmation must not activate the lock")
@@ -1970,7 +1987,7 @@ def test_activation_confirmation_calls_shared_orchestrator(monkeypatch):
         calls = []
 
         async def unexpected_cloud_fetch(*_args, **_kwargs):
-            raise AssertionError("TyOS discovery must defer cloud work to activation")
+            return _seed()
 
         async def fake_activate(passed_hass, passed_entry, **kwargs):
             calls.append((passed_hass, passed_entry, kwargs))
@@ -1995,6 +2012,9 @@ def test_activation_confirmation_calls_shared_orchestrator(monkeypatch):
         )
         refreshed_entry = _entry(password="refreshed-secret")
         flow.current_entries = [refreshed_entry]
+        checked = await flow.async_step_confirm_new_device({})
+        assert checked["step_id"] == "confirm_local_activation"
+        assert calls == []
         result = await flow.async_step_confirm_new_device({})
 
         assert calls == [
@@ -2005,6 +2025,7 @@ def test_activation_confirmation_calls_shared_orchestrator(monkeypatch):
                     "address": "AA:BB:CC:DD:EE:FF",
                     "device_uuid": "discovered-uuid",
                     "name": "TyOS",
+                    "activation_seed": activation.validate_activation_seed(_seed()),
                 },
             )
         ]
@@ -2073,7 +2094,7 @@ def test_activation_confirmation_detects_concurrent_device_add(monkeypatch):
 
         assert result == {"type": "abort", "reason": "already_configured"}
         assert activation_calls == 0
-        assert events.count("load") == 2
+        assert events.count("load") == 3
 
     asyncio.run(run_test())
 
@@ -2086,7 +2107,7 @@ def test_activation_confirmation_maps_store_reload_failure(monkeypatch):
         class FailingReloadStore(FakeStore):
             async def async_load(self):
                 self.events.append("load")
-                if self.events.count("load") == 2:
+                if self.events.count("load") == 3:
                     raise OSError("sensitive form storage failure")
 
         store = FailingReloadStore(events)
@@ -2177,7 +2198,7 @@ def test_activation_confirmation_maps_errors_without_leaking_details(
         flow = _new_config_flow(monkeypatch, hass, _entry(), store)
 
         async def unexpected_cloud_fetch(*_args, **_kwargs):
-            raise AssertionError("TyOS discovery must defer cloud work to activation")
+            return _seed()
 
         async def failing_activation(*_args, **_kwargs):
             raise error
@@ -2949,3 +2970,279 @@ def test_domain_migration_rejects_unsupported_source(monkeypatch, version, disab
         flow.current_entries = []
         assert await flow.async_step_user() == {"type": "abort", "reason": "legacy_migration_unavailable"}
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("updates", "reason"),
+    [
+        ({"device_id": ""}, "pair_in_app"),
+        ({"category": "gateway"}, "not_a_lock"),
+        ({"verify_key": ""}, "activation_seed_missing"),
+        ({"random": "invalid"}, "activation_seed_missing"),
+        ({"local_key": "short"}, "activation_seed_missing"),
+    ],
+)
+def test_tyos_checks_account_and_keys_before_offering_activation(monkeypatch, updates, reason):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+        calls = []
+
+        async def fetch(*_args, **_kwargs):
+            calls.append("fetch")
+            return _seed(**updates)
+
+        async def activate(*_args, **_kwargs):
+            raise AssertionError("Unverified discovery must never activate a lock")
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
+        monkeypatch.setattr(config_flow, "async_activate_lock", activate)
+        result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert result == {"type": "abort", "reason": reason}
+        assert calls == ["fetch"]
+        assert flow._activation_seed is None
+        assert store.devices == {}
+
+    asyncio.run(run_test())
+
+
+def test_tyos_cloud_failure_is_not_reported_as_missing_pairing(monkeypatch):
+    async def run_test():
+        events = []
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), FakeStore(events))
+
+        async def fetch(*_args, **_kwargs):
+            raise TimeoutError("private account details")
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
+        result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert result == {"type": "abort", "reason": "cloud_fetch_failed"}
+        assert flow._activation_seed is None
+
+    asyncio.run(run_test())
+
+
+def test_activation_confirmation_reuses_checked_keys_without_logging_in_again(monkeypatch):
+    async def run_test():
+        events = []
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), FakeStore(events))
+        calls = []
+
+        async def fetch(*_args, **_kwargs):
+            calls.append("fetch")
+            return _seed()
+
+        async def activate(*_args, **kwargs):
+            calls.append("activate")
+            assert kwargs["activation_seed"] == activation.validate_activation_seed(_seed())
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
+        monkeypatch.setattr(config_flow, "async_activate_lock", activate)
+        shown = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert shown["step_id"] == "confirm_new_device"
+        assert "abcdefghijklmnop" not in str(shown)
+        assert calls == ["fetch"]
+        # GET/polling the form must neither log in again nor activate.
+        await flow.async_step_confirm_new_device()
+        assert calls == ["fetch"]
+        result = await flow.async_step_confirm_new_device({})
+        assert result == {"type": "abort", "reason": "device_added"}
+        assert calls == ["fetch", "activate"]
+
+    asyncio.run(run_test())
+
+
+def test_prechecked_activation_does_not_fetch_cloud_again(monkeypatch):
+    async def run_test():
+        events = []
+        hass = FakeHass(events)
+        store = FakeStore(events)
+        _install_common_fakes(monkeypatch, hass, store, _seed(), events)
+
+        async def unexpected_fetch(*_args, **_kwargs):
+            raise AssertionError("Checked credentials must not cause another cloud login")
+
+        class Session(DisconnectableSession):
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def async_pair_first_activation(self, _auth_key):
+                return b"abcdef", (b"device-id" + b"\x00" * 22)[:22]
+
+        monkeypatch.setattr(activation, "async_fetch_auth_key", unexpected_fetch)
+        monkeypatch.setattr(activation, "TuyaBLELockSession", Session)
+        await activation.async_activate_lock(
+            hass, _entry(), address="AA:BB:CC:DD:EE:FF", activation_seed=_seed()
+        )
+        assert store.devices["AA:BB:CC:DD:EE:FF"]["local_key"] == "abcdefghijklmnop"
+        assert "fetch" not in events
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("discovery_name", ["TyOS", "Bound Lock"])
+def test_first_lock_missing_from_account_cannot_be_added(monkeypatch, discovery_name):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+        flow.current_entries = []
+
+        async def missing(*_args, **_kwargs):
+            return {"uuid": "uuid-from-advertisement", "device_id": ""}
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", missing)
+        await flow.async_step_bluetooth(_discovery(discovery_name))
+        await flow.async_step_select_country({"country": "nl"})
+        result = await flow.async_step_cloud_login({"email": "user@example.com", "password": "secret"})
+        assert result == {"type": "abort", "reason": "pair_in_app"}
+        assert store.devices == {}
+
+    asyncio.run(run_test())
+
+
+def test_failed_pairing_is_retried_with_persisted_keys_without_cloud(monkeypatch):
+    async def run_test():
+        events = []
+        hass = FakeHass(events)
+        store = FakeStore(events)
+        entry = _entry()
+        flow = _new_config_flow(monkeypatch, hass, entry, store)
+        calls = []
+
+        async def fetch(*_args, **_kwargs):
+            calls.append("fetch")
+            return _seed()
+
+        async def failing_pair(*_args, **kwargs):
+            calls.append("pair")
+            assert kwargs["activation_seed"]["local_key"] == "abcdefghijklmnop"
+            raise config_flow_activation.PairingFailedActivationError()
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", fetch)
+        monkeypatch.setattr(config_flow, "async_activate_lock", failing_pair)
+        await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert store.devices == {}
+        result = await flow.async_step_confirm_new_device({})
+        assert result["errors"] == {"base": "pairing_failed"}
+        assert store.activation_seeds["AA:BB:CC:DD:EE:FF"]
+
+        local_entry = _entry()
+        local_entry.data = {"setup_method": "local"}
+        next_flow = _new_config_flow(monkeypatch, hass, local_entry, store)
+
+        async def unexpected_cloud(*_args, **_kwargs):
+            raise AssertionError("Persisted activation keys must work with no cloud account")
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", unexpected_cloud)
+        result = await next_flow.async_step_bluetooth(_discovery("TyOS"))
+        assert result["step_id"] == "confirm_local_activation"
+        assert result["errors"] == {}
+        await next_flow.async_step_confirm_local_activation({})
+        assert calls == ["fetch", "pair", "pair"]
+        assert store.devices == {}
+
+    asyncio.run(run_test())
+
+
+def test_known_reset_lock_uses_existing_record_without_cloud(monkeypatch):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        stored = _seed()
+        # Existing releases stored the device ID in virtual_id only.
+        stored.pop("device_id")
+        stored["virtual_id"] = (b"device-id" + b"\x00" * 22)[:22].hex()
+        store.devices["AA:BB:CC:DD:EE:FF"] = stored
+        entry = _entry()
+        entry.data = {"setup_method": "local"}
+        flow = _new_config_flow(monkeypatch, FakeHass(events), entry, store)
+        calls = []
+
+        async def unexpected_cloud(*_args, **_kwargs):
+            raise AssertionError("Known slot credentials should be read locally")
+
+        async def activate(*_args, **kwargs):
+            calls.append(kwargs["activation_seed"])
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", unexpected_cloud)
+        monkeypatch.setattr(config_flow, "async_activate_lock", activate)
+        result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert result["step_id"] == "confirm_local_activation"
+        result = await flow.async_step_confirm_local_activation({})
+        assert result == {"type": "abort", "reason": "device_added"}
+        assert calls[0]["device_id"] == "device-id"
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("pair_fails", [False, True])
+def test_reactivation_excludes_existing_coordinator_and_releases_lock(monkeypatch, pair_fails):
+    async def run_test():
+        events = []
+        hass = FakeHass(events)
+        store = FakeStore(events)
+        entry = _entry()
+        _install_common_fakes(monkeypatch, hass, store, _seed(), events)
+        operation_lock = asyncio.Lock()
+
+        class ExistingSession:
+            async def async_disconnect(self):
+                assert operation_lock.locked()
+                events.append("existing-disconnect")
+
+        coordinator = types.SimpleNamespace(
+            _op_lock=operation_lock,
+            _idle_timer=types.SimpleNamespace(cancel=lambda: events.append("cancel-idle")),
+            _session=ExistingSession(),
+        )
+        entry.runtime_data = types.SimpleNamespace(coordinators={"AA:BB:CC:DD:EE:FF": coordinator})
+
+        class NewSession(DisconnectableSession):
+            def __init__(self, *_args, **_kwargs):
+                assert operation_lock.locked()
+                assert "existing-disconnect" in events
+
+            async def async_pair_first_activation(self, _auth_key):
+                assert operation_lock.locked()
+                if pair_fails:
+                    raise _SessionPairingFailedError()
+                return b"abcdef", (b"device-id" + b"\x00" * 22)[:22]
+
+        monkeypatch.setattr(activation, "TuyaBLELockSession", NewSession)
+        try:
+            await activation.async_activate_lock(
+                hass, entry, address="AA:BB:CC:DD:EE:FF", activation_seed=_seed()
+            )
+        except activation.PairingFailedActivationError:
+            assert pair_fails
+        else:
+            assert not pair_fails
+        assert not operation_lock.locked()
+        assert coordinator._idle_timer is None
+        assert bool(store.devices) is not pair_fails
+
+    asyncio.run(run_test())
+
+
+def test_seed_storage_failure_prevents_activation_confirmation(monkeypatch):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+
+        class FailingSeedStore:
+            async def async_get_seed(self, _mac):
+                return None
+
+            async def async_save_seed(self, _mac, _seed):
+                raise OSError("private storage path")
+
+        monkeypatch.setattr(config_flow, "ActivationSeedStore", lambda _hass: FailingSeedStore())
+        result = await flow.async_step_bluetooth(_discovery("TyOS"))
+        assert result == {"type": "abort", "reason": "activation_storage_unavailable"}
+        assert flow._activation_seed is None
+        assert store.devices == {}
+
+    asyncio.run(run_test())

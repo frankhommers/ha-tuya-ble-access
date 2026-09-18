@@ -5,6 +5,7 @@ Adapted from tuya_mobile_api.py — rewritten from requests to aiohttp.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -111,12 +112,13 @@ class TuyaMobileAPIAsync:
 
         url = self.base_url + "/api.json"
         headers = {"User-Agent": "TuyaSmart/7.2.8 (Android)"}
-        _LOGGER.debug("Tuya API call: action=%s postData=%s", action, params.get("postData"))
-        async with self._session.get(url, params=params, headers=headers) as resp:
-            resp.raise_for_status()
-            result = await resp.json()
-            _LOGGER.debug("Tuya API response: %s", result)
-            return result
+        _LOGGER.debug("Tuya API call: action=%s", action)
+        async with asyncio.timeout(15):
+            async with self._session.get(url, params=params, headers=headers) as resp:
+                resp.raise_for_status()
+                result = await resp.json()
+                _LOGGER.debug("Tuya API result: action=%s success=%s", action, result.get("success"))
+                return result
 
     async def async_login(self, country_code: str, email: str, password: str) -> dict:
         passwd_md5 = hashlib.md5(password.encode()).hexdigest()
@@ -188,9 +190,10 @@ class TuyaMobileAPIAsync:
         params["sign"] = _sign(params, self._hmac_key)
         url = self.base_url + "/api.json"
         headers = {"User-Agent": "TuyaSmart/7.2.8 (Android)"}
-        async with self._session.get(url, params=params, headers=headers) as resp:
-            resp.raise_for_status()
-            return await resp.json()
+        async with asyncio.timeout(15):
+            async with self._session.get(url, params=params, headers=headers) as resp:
+                resp.raise_for_status()
+                return await resp.json()
 
     async def async_find_device_by_mac(self, device_mac: str) -> dict | None:
         """Look up device info by MAC address via cloud API.
@@ -202,6 +205,8 @@ class TuyaMobileAPIAsync:
         import base64
         mac_clean = device_mac.replace(":", "").upper()
         homes_resp = await self.async_get_home_list()
+        if not homes_resp.get("success"):
+            raise RuntimeError("Could not list Tuya homes")
         homes_result = homes_resp.get("result", {})
         if isinstance(homes_result, dict):
             homes_result = homes_result.get("result", [])
@@ -210,6 +215,8 @@ class TuyaMobileAPIAsync:
             if not gid:
                 continue
             devs_resp = await self.async_list_devices(gid)
+            if not devs_resp.get("success"):
+                raise RuntimeError("Could not list Tuya devices")
             devs_result = devs_resp.get("result", {})
             if isinstance(devs_result, dict):
                 devs_result = devs_result.get("result", [])
@@ -425,6 +432,10 @@ async def async_fetch_auth_key(
     # Look up device info by MAC (needed for UUID, localKey, devId)
     if device_mac:
         cloud_info = await client.async_find_device_by_mac(device_mac) or {}
+        if not cloud_info:
+            # Discovery alone does not establish account membership. Do not fetch
+            # an authentication key for an unknown device just because it advertises.
+            return {"uuid": resolved_uuid, "device_id": ""}
         if cloud_info:
             _LOGGER.info(
                 "Cloud device info: uuid=%s devId=%s name=%s",

@@ -6,6 +6,7 @@ supplied credentials. Discovered cloud locks are auto-added to the device store.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 
@@ -32,6 +33,7 @@ from .activation import (
     PostBindPersistenceActivationError,
     StorageUnavailableActivationError,
     async_activate_lock,
+    validate_activation_seed,
 )
 from .const import (
     DOMAIN,
@@ -54,7 +56,7 @@ from .const import (
     LOCK_CATEGORIES,
 )
 from .device_profiles import async_get_profile_choices
-from .device_store import DeviceStore
+from .device_store import ActivationSeedStore, DeviceStore
 from .tuya_cloud import async_fetch_auth_key
 
 _LOGGER = logging.getLogger(__name__)
@@ -275,6 +277,10 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._selected_country = None
         self._activation_entry_id = None
         self._pairing_mode_discovery = False
+        self._activation_seed = None
+        self._activation_account = None
+        self._activation_source = None
+        self._activation_existing_record = None
 
     # ---- BLE discovery ----
 
@@ -307,7 +313,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._activation_entry_id = entry.entry_id
             device_store = DeviceStore(self.hass)
             await device_store.async_load()
-            if device_store.get_device(self._mac):
+            if device_store.get_device(self._mac) and not self._pairing_mode_discovery:
                 return self.async_abort(reason="already_configured")
             if self._pairing_mode_discovery:
                 return await self.async_step_confirm_new_device()
@@ -347,6 +353,9 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "Auto-add cloud fetch failed for %s", self._mac, exc_info=True
             )
             return self.async_abort(reason="cloud_fetch_failed")
+
+        if not cloud_result.get("device_id"):
+            return self.async_abort(reason="pair_in_app")
 
         # The BLE matcher keys on the FD50 service UUID, which every Tuya BLE
         # device advertises -- gateways included. Only adopt actual locks, or a
@@ -395,25 +404,86 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.hass.config_entries.async_reload(entry.entry_id)
             return self.async_abort(reason="device_added")
 
-        # Device not bound — need BLE pairing (show confirm to user)
-        self._email = email
-        self._password = password
-        self._country = country
-        self._region = region
-        return await self.async_step_confirm_new_device()
+        # Missing account credentials are not evidence that BLE activation is possible.
+        return self.async_abort(reason="pair_in_app")
+
+    @staticmethod
+    def _account_identity(entry):
+        return tuple(entry.data.get(key, "") for key in (
+            CONF_TUYA_EMAIL, CONF_TUYA_PASSWORD, CONF_TUYA_COUNTRY, CONF_TUYA_REGION
+        ))
+
+    async def _async_prepare_activation(self, entry):
+        """Check account membership and keys without changing Bluetooth pairing."""
+        self._activation_seed = None
+        self._activation_account = None
+        self._activation_source = None
+        try:
+            seeds = ActivationSeedStore(self.hass)
+            devices = DeviceStore(self.hass)
+            await devices.async_load()
+            # Active-device credentials take precedence over an older cached seed.
+            existing = devices.get_device(self._mac)
+            self._activation_existing_record = dict(existing) if existing else None
+            candidates = [existing, await seeds.async_get_seed(self._mac)]
+        except Exception:
+            return self.async_abort(reason="activation_storage_unavailable")
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                self._activation_seed = validate_activation_seed(candidate, self._uuid or "")
+            except MissingActivationSeedError:
+                continue
+            self._activation_source = "local"
+            return None
+        email, password, country, region = self._account_identity(entry)
+        if not email or not password:
+            return self.async_abort(reason="missing_credentials")
+        try:
+            async with asyncio.timeout(30):
+                cloud = await async_fetch_auth_key(
+                    self.hass, self._uuid or "", email, password, country, region,
+                    device_mac=self._mac or "",
+                )
+        except Exception:
+            return self.async_abort(reason="cloud_fetch_failed")
+        if not cloud.get("device_id"):
+            return self.async_abort(reason="pair_in_app")
+        if (cloud.get("category") or "").lower() not in LOCK_CATEGORIES:
+            return self.async_abort(reason="not_a_lock")
+        try:
+            self._activation_seed = validate_activation_seed(cloud, self._uuid or "")
+        except MissingActivationSeedError:
+            return self.async_abort(reason="activation_seed_missing")
+        try:
+            await seeds.async_save_seed(self._mac, self._activation_seed)
+        except Exception:
+            self._activation_seed = None
+            return self.async_abort(reason="activation_storage_unavailable")
+        self._activation_source = "cloud"
+        self._activation_account = self._account_identity(entry)
+        return None
 
     async def async_step_confirm_new_device(self, user_input=None):
         """Confirm adding a new lock that needs BLE pairing."""
         errors = {}
+        entry = next(
+            (current_entry for current_entry in self._async_current_entries()
+             if current_entry.entry_id == self._activation_entry_id),
+            None,
+        )
+        if entry is not None and (
+            self._activation_seed is None
+            or (self._activation_source == "cloud"
+                and self._activation_account != self._account_identity(entry))
+        ):
+            result = await self._async_prepare_activation(entry)
+            if result is not None:
+                return result
+            # A changed account or an unprepared direct submit must be confirmed again.
+            user_input = None
         if user_input is not None:
-            entry = next(
-                (
-                    current_entry
-                    for current_entry in self._async_current_entries()
-                    if current_entry.entry_id == self._activation_entry_id
-                ),
-                None,
-            )
             if entry is None:
                 errors["base"] = "integration_changed"
             else:
@@ -428,7 +498,8 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     errors["base"] = "activation_storage_unavailable"
                 else:
-                    if device_store.get_device(self._mac):
+                    current_record = device_store.get_device(self._mac)
+                    if current_record and current_record != self._activation_existing_record:
                         return self.async_abort(reason="already_configured")
                     try:
                         await async_activate_lock(
@@ -437,6 +508,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             address=self._mac,
                             device_uuid=self._uuid or "",
                             name=self._name or "",
+                            activation_seed=self._activation_seed,
                         )
                     except MissingActivationSeedError:
                         errors["base"] = "activation_seed_missing"
@@ -470,10 +542,16 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"],
                 )
         return self.async_show_form(
-            step_id="confirm_new_device",
+            step_id=("confirm_local_activation" if self._activation_source == "local"
+                     else "confirm_new_device"),
+            data_schema=vol.Schema({}),
             errors=errors,
             description_placeholders={"name": self._name, "mac": self._mac},
         )
+
+    async def async_step_confirm_local_activation(self, user_input=None):
+        """Confirm reactivation with locally saved keys, without cloud access."""
+        return await self.async_step_confirm_new_device(user_input)
 
     # ---- Manual setup (first hub creation) ----
 
@@ -647,7 +725,15 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _create_hub_with_device(self, cloud_result: dict):
         """Create the hub entry and add the first bound device."""
+        if not cloud_result.get("device_id"):
+            return self.async_abort(reason="pair_in_app")
         if self._pairing_mode_discovery:
+            if (cloud_result.get("category") or "").lower() not in LOCK_CATEGORIES:
+                return self.async_abort(reason="not_a_lock")
+            try:
+                validate_activation_seed(cloud_result, self._uuid or "")
+            except MissingActivationSeedError:
+                return self.async_abort(reason="activation_seed_missing")
             return await self._create_hub_entry()
 
         # The BLE matcher keys on the FD50 service UUID, which every Tuya BLE

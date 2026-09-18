@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import AsyncExitStack
 import logging
 
 from homeassistant.components import bluetooth
@@ -112,6 +113,34 @@ def _validate_ascii_identifier(name: str, value: object) -> bytes:
         ) from exc
 
 
+def validate_activation_seed(cloud: dict, device_uuid: str = "") -> dict:
+    """Normalize and validate credentials before offering physical activation."""
+    device_id = cloud.get("device_id") or cloud.get("devId") or ""
+    if not device_id and cloud.get("virtual_id"):
+        try:
+            device_id = bytes.fromhex(cloud["virtual_id"]).rstrip(b"\x00").decode("ascii")
+        except (TypeError, ValueError, UnicodeDecodeError) as exc:
+            raise MissingActivationSeedError("Invalid stored device identifier") from exc
+    seed = {
+        **cloud,
+        "auth_key": cloud.get("auth_key") or cloud.get("encryptedAuthKey") or "",
+        "auth_random": cloud.get("auth_random") or cloud.get("random") or "",
+        "local_key": cloud.get("local_key") or cloud.get("localKey") or "",
+        "sec_key": cloud.get("sec_key") or cloud.get("secKey") or "",
+        "verify_key": cloud.get("verify_key") or cloud.get("verifyKey") or cloud.get("sign") or "",
+        "device_id": device_id,
+        "uuid": cloud.get("uuid") or device_uuid,
+    }
+    _decode_hex("auth_key", seed["auth_key"], 16)
+    _decode_hex("auth_random", seed["auth_random"], 16)
+    _encode_ascii_key("local_key", seed["local_key"])
+    _encode_ascii_key("sec_key", seed["sec_key"])
+    _decode_hex("verify_key", seed["verify_key"], 4)
+    _validate_ascii_identifier("device_id", seed["device_id"])
+    _validate_ascii_identifier("uuid", seed["uuid"])
+    return seed
+
+
 async def _async_check_storage(hass: HomeAssistant, persistence_lock: asyncio.Lock) -> None:
     try:
         async with persistence_lock:
@@ -205,6 +234,7 @@ async def async_activate_lock(
     address: str,
     device_uuid: str = "",
     name: str = "",
+    activation_seed: dict | None = None,
 ) -> dict:
     """Fetch a V5 seed, verify BLE activation, then persist the lock."""
     normalized_address = address.upper()
@@ -215,57 +245,38 @@ async def async_activate_lock(
         "activation_persistence_lock", asyncio.Lock()
     )
 
-    async with lock:
-        try:
-            cloud = await async_fetch_auth_key(
-                hass,
-                device_uuid,
-                entry.data.get(CONF_TUYA_EMAIL, ""),
-                entry.data.get(CONF_TUYA_PASSWORD, ""),
-                entry.data.get(CONF_TUYA_COUNTRY, ""),
-                entry.data.get(CONF_TUYA_REGION, ""),
-                device_mac=normalized_address,
-            )
-        except Exception as exc:
-            raise CloudFetchActivationError(
-                "Could not fetch lock activation data"
-            ) from exc
+    async with lock, AsyncExitStack() as connections:
+        if activation_seed is None:
+            try:
+                async with asyncio.timeout(30):
+                    activation_seed = await async_fetch_auth_key(
+                        hass,
+                        device_uuid,
+                        entry.data.get(CONF_TUYA_EMAIL, ""),
+                        entry.data.get(CONF_TUYA_PASSWORD, ""),
+                        entry.data.get(CONF_TUYA_COUNTRY, ""),
+                        entry.data.get(CONF_TUYA_REGION, ""),
+                        device_mac=normalized_address,
+                    )
+            except Exception as exc:
+                raise CloudFetchActivationError(
+                    "Could not fetch lock activation data"
+                ) from exc
 
-        auth_key_hex = cloud.get("auth_key") or cloud.get("encryptedAuthKey") or ""
-        auth_random_hex = cloud.get("auth_random") or cloud.get("random") or ""
-        local_key = cloud.get("local_key") or cloud.get("localKey") or ""
-        sec_key = cloud.get("sec_key") or cloud.get("secKey") or ""
-        verify_key_hex = (
-            cloud.get("verify_key")
-            or cloud.get("verifyKey")
-            or cloud.get("sign")
-            or ""
-        )
-        device_id = cloud.get("device_id") or cloud.get("devId") or ""
-        resolved_uuid = cloud.get("uuid") or device_uuid
-
-        required = {
-            "auth_key": auth_key_hex,
-            "auth_random": auth_random_hex,
-            "local_key": local_key,
-            "sec_key": sec_key,
-            "verify_key": verify_key_hex,
-            "device_id": device_id,
-            "uuid": resolved_uuid,
-        }
-        missing = [field for field, value in required.items() if not value]
-        if missing:
-            raise MissingActivationSeedError(
-                f"Incomplete V5 activation seed: missing {', '.join(missing)}"
-            )
-
-        auth_key = _decode_hex("auth_key", auth_key_hex, 16)
-        auth_random = _decode_hex("auth_random", auth_random_hex, 16)
-        verify_key = _decode_hex("verify_key", verify_key_hex, 4)
-        local_key_bytes = _encode_ascii_key("local_key", local_key)
-        sec_key_bytes = _encode_ascii_key("sec_key", sec_key)
-        device_id_bytes = _validate_ascii_identifier("device_id", device_id)
-        _validate_ascii_identifier("uuid", resolved_uuid)
+        cloud = validate_activation_seed(activation_seed, device_uuid)
+        auth_key_hex = cloud["auth_key"]
+        auth_random_hex = cloud["auth_random"]
+        local_key = cloud["local_key"]
+        sec_key = cloud["sec_key"]
+        verify_key_hex = cloud["verify_key"]
+        device_id = cloud["device_id"]
+        resolved_uuid = cloud["uuid"]
+        auth_key = bytes.fromhex(auth_key_hex)
+        auth_random = bytes.fromhex(auth_random_hex)
+        verify_key = bytes.fromhex(verify_key_hex)
+        local_key_bytes = local_key.encode("ascii")
+        sec_key_bytes = sec_key.encode("ascii")
+        device_id_bytes = device_id.encode("ascii")
         login_key = local_key_bytes[:6]
         virtual_id = (device_id_bytes + b"\x00" * 22)[:22]
 
@@ -278,6 +289,17 @@ async def async_activate_lock(
             raise BluetoothUnavailableError(
                 f"No connectable BLE device available for {normalized_address}"
             )
+
+        runtime_data = getattr(entry, "runtime_data", None)
+        coordinators = getattr(runtime_data, "coordinators", {})
+        coordinator = coordinators.get(normalized_address)
+        if coordinator is not None:
+            # Suspend this lock's normal operations until pairing and reload finish.
+            await connections.enter_async_context(coordinator._op_lock)
+            if coordinator._idle_timer is not None:
+                coordinator._idle_timer.cancel()
+                coordinator._idle_timer = None
+            await coordinator._session.async_disconnect()
 
         session = TuyaBLELockSession(
             hass,
@@ -329,7 +351,7 @@ async def async_activate_lock(
             "sec_key": sec_key,
             "verify_key": verify_key_hex,
             "check_code": cloud.get("check_code") or cloud.get("checkCode") or "",
-            "cloud_dps": cloud.get("dps") or {},
+            "cloud_dps": cloud.get("dps") or cloud.get("cloud_dps") or {},
         }
         completion_task = asyncio.create_task(
             _async_complete_post_bind(

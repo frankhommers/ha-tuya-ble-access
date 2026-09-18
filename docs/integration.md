@@ -2,16 +2,54 @@
 
 Tuya BLE Access is a Home Assistant custom integration for local Bluetooth lock
 control. Installation and supported profiles are described in the [README](../README.md).
-The tested behavior and remaining physical checks for version 0.2.1 are listed in the [release notes](releases/0.2.1.md).
+The changed activation behavior and remaining physical checks for version 0.2.2
+are listed in the [release notes](releases/0.2.2.md).
 
 ## Setup
 
-Create one **Tuya BLE Access** hub via Settings → Devices & services. Choose a
-Tuya/Smart Life cloud account or local credentials. Cloud setup retrieves the
-lock credentials; local setup uses credentials previously obtained for the
-selected lock. Compatible unbound V5 devices also expose local activation.
-Daily BLE commands are local, while explicitly selected cloud operations still
-use the cloud account.
+1. Pair a new lock in the **Tuya Smart** or **Smart Life** app first.
+2. Create one **Tuya BLE Access** hub via Settings → Devices & services.
+   Choose **Add a lock via Tuya / Smart Life** and sign in with the same account
+   to retrieve the lock's Bluetooth keys.
+3. Close the app's lock panel and wake the lock near a Home Assistant Bluetooth
+   adapter or proxy so Bluetooth discovery can find it.
+
+To add another lock to that hub, pair it in the app with the same account, close
+its app panel and wake it near Home Assistant. Bluetooth discovery adds it to the
+existing hub. A hub using only local credentials must first be reconfigured with
+a Tuya account to use this route.
+
+The advanced local setup option imports previously obtained credentials for an
+already-bound lock. It does not pair a new or factory-reset lock.
+Compatible unbound V5 devices also expose reactivation for previously paired
+locks. The flow looks up the MAC address in the local device records and saved
+activation keys first. Only if neither has complete, valid credentials does it
+consult the configured Tuya account. Devices absent from that account are directed
+to app pairing; incomplete credentials never lead to Bluetooth activation.
+
+The confirmation identifies locally saved keys or checked Tuya credentials.
+Cloud credentials are saved before the Bluetooth attempt, separately from active
+devices. A failed attempt does not add a lock, but its keys remain available for
+a subsequent attempt without cloud access. Existing device records take precedence
+over an older cached activation seed. Bluetooth still has to verify the keys.
+This does not replace initial app pairing for a new lock. The advanced `activate`
+action still fetches credentials from Tuya; use the discovery confirmation for
+reactivation with locally saved keys.
+
+The initial Bluetooth device-info phase has a 45-second deadline. This is before
+any PAIR command is sent; later pairing/verification and persistence complete
+normally. On connection errors, close the phone app, stop competing connections,
+and keep the lock awake near the proxy. Do not reset a lock just because it timed
+out. Daily use needs neither a reset nor repeated pairing.
+
+Activation keys are stored locally by MAC in Home Assistant's `.storage`, in
+`tuya_ble_access_devices_activation`, separately from the existing
+`tuya_ble_access_devices` device records. Back up both stores with the rest of the
+HA configuration; they contain private device keys. Saving activation credentials
+does not start a lock coordinator or change the device's pairing.
+
+Daily BLE commands work without the app or Tuya Cloud, while explicitly selected
+cloud operations still use the cloud account.
 
 Keep the lock in Bluetooth range and close the Tuya lock panel during setup or
 troubleshooting: the phone app and HA can compete for the available connection.
