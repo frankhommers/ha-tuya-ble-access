@@ -2,8 +2,8 @@
 
 Tuya BLE Access is a Home Assistant custom integration for local Bluetooth lock
 control. Installation and supported profiles are described in the [README](../README.md).
-The changed activation behavior and remaining physical checks for version 0.2.3
-are listed in the [release notes](releases/0.2.3.md).
+The changed activation behavior and remaining physical checks for version 0.2.4
+are listed in the [release notes](releases/0.2.4.md).
 
 ## Setup
 
@@ -126,6 +126,10 @@ an old HA mapping as proof that a credential still exists in the reset lock.
 
 ## Troubleshooting
 
+- If the Bluetooth advertisement monitor sees the MAC address but no discovery
+  card appears, check that Tuya BLE Access is at least 0.2.4. Earlier versions
+  could miss advertisements containing FD50 service data without a service UUID
+  list or scan-response name. A missing `TyOS` name does not mean the lock is absent.
 - If connecting fails, wake the keypad, check range and proxy availability, and
   close other apps currently connected to the lock.
 - If an entity is absent, check whether the device profile supports it.

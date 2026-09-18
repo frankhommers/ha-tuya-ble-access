@@ -187,6 +187,23 @@ def _region_selector():
     ))
 
 
+def _advertised_bound_state(service_data: bytes) -> bool | None:
+    """Read the bind bit in a complete Tuya V4/V5 FD50 PID advertisement.
+
+    The local name/manufacturer data can be absent when scan responses are lost.
+    Tuya documents control bit 3 as bound (0x41 -> 0x49 for V4); captured K3 V5
+    packets use the same bit (0x51 -> 0x59).
+    """
+    if (
+        len(service_data) < 12
+        or service_data[0] >> 4 not in (4, 5)
+        or service_data[2] != 0  # PID product identifier
+        or service_data[3] != 8
+    ):
+        return None
+    return bool(service_data[0] & 0x08)
+
+
 def _decrypt_uuid(service_data: bytes, encrypted_id: bytes) -> str:
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -299,6 +316,10 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if "fd50" in suuid.lower():
                 svc_data = sd
                 break
+        advertised_bound = _advertised_bound_state(bytes(svc_data or b""))
+        if advertised_bound is not None:
+            self._pairing_mode_discovery = not advertised_bound
+
         man = discovery_info.manufacturer_data.get(0x07D0)
         if svc_data and man and len(man) >= 20:
             try:

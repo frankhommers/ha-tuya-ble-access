@@ -3313,3 +3313,71 @@ def test_failed_check_remains_visible_and_can_be_retried_before_pairing(monkeypa
         assert calls == ["fetch", "fetch", "pair"]
 
     asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("name", [None, "AA:BB:CC:DD:EE:FF", "TyOS"])
+def test_unbound_fd50_service_data_without_scan_response_is_discovered(monkeypatch, name):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+        # Production packet: no name, manufacturer data, or service UUID list.
+        discovery = _discovery(name)
+        discovery.service_data = {
+            "0000fd50-0000-1000-8000-00805f9b34fb": bytes.fromhex("510c0008626132716b313737")
+        }
+        discovery.service_uuids = []
+        discovery.manufacturer_data = {}
+
+        async def unexpected(*_args, **_kwargs):
+            raise AssertionError("Discovery must stay visible without cloud or pairing calls")
+
+        monkeypatch.setattr(config_flow, "async_fetch_auth_key", unexpected)
+        monkeypatch.setattr(config_flow, "async_activate_lock", unexpected)
+        result = await flow.async_step_bluetooth(discovery)
+        assert result["step_id"] == "check_device"
+        assert result["errors"] == {}
+        assert flow._pairing_mode_discovery is True
+        assert store.devices == {}
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("name", [None, "TyOS"])
+def test_bound_advertisement_uses_import_even_with_missing_or_stale_name(monkeypatch, name):
+    async def run_test():
+        events = []
+        store = FakeStore(events)
+        flow = _new_config_flow(monkeypatch, FakeHass(events), _entry(), store)
+        discovery = _discovery(name)
+        discovery.service_data = {
+            "0000fd50-0000-1000-8000-00805f9b34fb": bytes.fromhex("590c0008626132716b313737")
+        }
+        discovery.service_uuids = []
+        discovery.manufacturer_data = {}
+        result = await flow.async_step_bluetooth(discovery)
+        assert flow._pairing_mode_discovery is False
+        assert result == {"type": "abort", "reason": "device_added"}
+        assert store.devices["AA:BB:CC:DD:EE:FF"]["local_key"] == "abcdefghijklmnop"
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ("", None),
+        ("51", None),
+        ("510c00086261", None),
+        ("310c0008626132716b313737", None),
+        ("510c0108626132716b313737", None),
+        ("510c000f626132716b313737", None),
+        ("410c0008626132716b313737", False),
+        ("490c0008626132716b313737", True),
+        ("510c0008626132716b313737", False),
+        ("590c0008626132716b313737", True),
+        ("5b0c0008626132716b313737", True),
+    ],
+)
+def test_advertised_bind_state_requires_complete_supported_header(payload, expected):
+    assert config_flow._advertised_bound_state(bytes.fromhex(payload)) is expected

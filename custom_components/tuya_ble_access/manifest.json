@@ -1,7 +1,7 @@
 {
   "domain": "tuya_ble_access",
   "name": "Tuya BLE Access",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "codeowners": [
     "@frankhommers"
   ],
@@ -21,6 +21,10 @@
   "bluetooth": [
     {
       "service_uuid": "0000fd50-0000-1000-8000-00805f9b34fb",
+      "connectable": true
+    },
+    {
+      "service_data_uuid": "0000fd50-0000-1000-8000-00805f9b34fb",
       "connectable": true
     },
     {
