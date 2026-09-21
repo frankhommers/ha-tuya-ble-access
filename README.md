@@ -6,16 +6,17 @@ Home Assistant custom integration for local Bluetooth control of Tuya locks and
 keyboxes, by [Frank Hommers](https://github.com/frankhommers).
 This repository contains the integration, its tests and user documentation.
 
-**Version 0.3.1**. The baseline integration was validated in Home Assistant
+**Version 0.3.2**. The baseline integration was validated in Home Assistant
 2026.8.3; the revised activation flow has automated coverage and still needs a
 physical device check. Temporary
 PIN creation, validity enforcement and removal still need physical validation on
-the K3 BLE PRO 2. See [release notes](docs/releases/0.3.1.md).
+the K3 BLE PRO 2. See [release notes](docs/releases/0.3.2.md).
 
 ## Features
 
 - Local lock/unlock, battery/status monitoring and supported lock settings.
 - Enrollment and attribution of PINs, fingerprints and NFC cards.
+- HA user attribution for Bluetooth unlocks matched to a recent HA command.
 - English and Dutch entity names, actions, options and errors.
 - K3 event-driven connections and unlock history with duplicate suppression.
 - Report a hardware factory reset to clear obsolete mappings for that lock.

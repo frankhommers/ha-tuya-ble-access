@@ -2,8 +2,8 @@
 
 Tuya BLE Access is a Home Assistant custom integration for local Bluetooth lock
 control. Installation and supported profiles are described in the [README](../README.md).
-The changed activation behavior and remaining physical checks for version 0.3.1
-are listed in the [release notes](releases/0.3.1.md).
+The changed activation behavior and remaining physical checks for version 0.3.2
+are listed in the [release notes](releases/0.3.2.md).
 
 ## Setup
 
@@ -152,6 +152,38 @@ Persistent mode keeps reconnecting when a device drops its link and can increase
 battery use. Normal idle disconnection is at least 20 seconds, extended as needed
 for the configured auto-lock delay. Temporary-PIN cleanup uses existing normal
 connections and does not introduce another periodic connection schedule.
+
+## Who requested a Bluetooth unlock
+
+**Last unlocked by** shows the HA user's name when a fresh Bluetooth unlock
+report matches their `lock.unlock` command. A single matching `person` entity
+linked to that HA user is included when available. Commands without a user in
+the service context show **Home Assistant**; the integration does not infer a
+person from an automation's parent context. Unmatched Bluetooth records remain
+**Bluetooth**. The hardware's `user_id: 1` is not HA user 1.
+
+The initiating service context is captured before the command awaits anything.
+Correlation begins immediately before the write, after connection/backlog
+processing, and expires after 30 seconds. Only a Bluetooth event timestamp in
+the five seconds starting at the command timestamp is eligible, and overlapping
+candidates are left unattributed. Each command can claim one report. Failed or
+cancelled writes cannot attribute a later event. This is a best-effort association
+with the command's initiator, not proof of who physically passed through the door.
+No user ID is written into the lock's credential slots.
+
+History and identity sensor attributes keep `ha_user_id`, `context_id`,
+`parent_id` and `initiator_source` separate from the hardware `user_id`.
+The credential sensor no longer renders **User 1** for Bluetooth, mechanical or
+remote unlocks; it reports no credential when none applies. Fingerprint, card
+and PIN labels retain their existing behavior.
+
+The motor may produce `tuya_ble_access_unlock` before the identity record arrives.
+Use **`tuya_ble_access_bluetooth_unlock`** for a matched HA-initiated Bluetooth
+record. It includes `by`, `person`, the separate hardware and HA user IDs, and the
+original HA event context. A command alone does not emit this event or claim a
+physical unlock. Stored history is not retrospectively assigned to an HA user.
+Pending commands are not restored across a restart; confirmed sensor/history
+attribution is restored normally.
 
 ## Reset and re-pairing
 

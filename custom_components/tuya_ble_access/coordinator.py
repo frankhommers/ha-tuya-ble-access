@@ -20,6 +20,7 @@ from .device_profiles import parse_dp_value
 from .event_collect import async_drain_event_pushes
 from .event_flag import EventFlagTracker, parse_event_flag
 from .temp_password_cleanup import async_cleanup_expired_passwords
+from .unlock_attribution import UnlockAttribution, async_resolve_initiator
 
 # After a flag-triggered connect, keep draining for this long to catch the
 # lock's repeated 0x8007 unlock push (it recurs ~every 6s). Covers the T+6 /
@@ -119,6 +120,8 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
         self._motor_unlock_at: float = 0.0
         self._motor_unlock_claimed: bool = True
         self._last_unlock_fire_at: float = 0.0
+        self._unlock_attribution = UnlockAttribution()
+        self._ha_report_before_motor = None
 
         # Listen for HA shutdown to cancel background tasks
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._on_ha_stop)
@@ -317,7 +320,13 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                                 person_eid = getattr(member, "person_entity_id", None)
                         except Exception as exc:
                             _LOGGER.debug("Member lookup failed: %s", exc)
-                    if member_name:
+                    initiator = None
+                    if dp_id == 19:
+                        initiator = self._unlock_attribution.match(reported_event_ts, time.monotonic())
+                    if initiator:
+                        by = initiator.name
+                        person_eid = initiator.person_entity_id
+                    elif member_name:
                         by = member_name
                     elif credential_name:
                         by = credential_name
@@ -347,6 +356,8 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                         "credential": credential_name,
                         "password_id": password_id,
                     }
+                    actor_attributes = initiator.attributes() if initiator else {}
+                    record.update(actor_attributes)
                     history = list(self.state.get("recent_unlocks") or [])
                     history.insert(0, record)
                     self.state["recent_unlocks"] = history[:MAX_RECENT_UNLOCKS]
@@ -379,11 +390,27 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                         self.state["last_unlock_person"] = person_eid
                         self.state["last_unlock_credential"] = credential_name
                         self.state["last_unlock_password_id"] = password_id
+                        for field in ("ha_user_id", "context_id", "parent_id", "initiator_source"):
+                            self.state[f"last_unlock_{field}"] = actor_attributes.get(field)
+                        self._ha_report_before_motor = (
+                            (time.monotonic(), initiator)
+                            if initiator and not motor_backed else None
+                        )
                     else:
                         _LOGGER.debug(
                             "Unlock record DP%d user=%s ts=%d is older than the "
                             "current last unlock (%d): event only",
                             dp_id, user_id, reported_event_ts, prev_ts,
+                        )
+                    if initiator:
+                        # The motor event may have fired before identity was known.
+                        self.hass.bus.async_fire(
+                            f"{DOMAIN}_bluetooth_unlock",
+                            {"mac": self._mac, "name": self._device_name,
+                             "timestamp": reported_event_ts, "method": method_label,
+                             "user_id": user_id, "by": by, "person": person_eid,
+                             **actor_attributes},
+                            context=initiator.context,
                         )
                     if dp_id == 55:
                         # A separate attribution event also fires when the motor
@@ -418,7 +445,9 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                                 "person": person_eid,
                                 "credential": credential_name,
                                 "password_id": password_id,
+                                **actor_attributes,
                             },
+                            context=initiator.context if initiator else None,
                         )
 
             # Alarm events carry the lock's timestamp too — expose it so the
@@ -472,12 +501,21 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                     self._motor_unlock_at = now_mono
                     self._motor_unlock_claimed = False
                     self.state["last_unlock_time"] = int(time.time())
-                    # Attribution belongs to the record that follows; until it
-                    # arrives, do not keep showing the previous person.
-                    for k in ("last_unlock_method", "last_unlock_user",
-                              "last_unlock_by", "last_unlock_person",
-                              "last_unlock_credential", "last_unlock_password_id"):
-                        self.state[k] = None
+                    # The matching HA/Bluetooth record may arrive immediately
+                    # before the motor status. Preserve it once, for at most one
+                    # second; never retain a previous unlocker's identity.
+                    previous = getattr(self, "_ha_report_before_motor", None)
+                    self._ha_report_before_motor = None
+                    confirmed = previous[1] if previous and 0 <= now_mono - previous[0] <= 1 else None
+                    if confirmed:
+                        self._motor_unlock_claimed = True
+                    else:
+                        for k in ("last_unlock_method", "last_unlock_user",
+                                  "last_unlock_by", "last_unlock_person",
+                                  "last_unlock_credential", "last_unlock_password_id",
+                                  "last_unlock_ha_user_id", "last_unlock_context_id",
+                                  "last_unlock_parent_id", "last_unlock_initiator_source"):
+                            self.state[k] = None
                     _LOGGER.debug("Motor run on %s -> unlock at now", self._mac)
                     # Exactly one bus event per physical unlock: every motor
                     # run is one, so no time-based suppression.
@@ -488,8 +526,11 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                             "name": self._device_name,
                             "timestamp": self.state["last_unlock_time"],
                             "source": "motor",
-                            "attribution": "pending",
+                            "attribution": "home_assistant" if confirmed else "pending",
+                            **({"by": confirmed.name, "person": confirmed.person_entity_id,
+                                "method": "bluetooth", **confirmed.attributes()} if confirmed else {}),
                         },
+                        context=confirmed.context if confirmed else None,
                     )
         if changed:
             self.async_set_updated_data(self.state)
@@ -922,20 +963,31 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(self.state)
             self._reset_idle_timer()
 
-    async def async_unlock(self) -> None:
+    async def async_unlock(self, *, context=None) -> None:
+        initiator = await async_resolve_initiator(self.hass, context)
         async with self._op_lock:
             await self._async_ensure_connected()
             unlock_dp = self._get_unlock_dp()
-            payload = self._build_unlock_payload(action_unlock=True)
-            _LOGGER.debug("Sending unlock command (DP %d RAW, %d bytes): %s", unlock_dp, len(payload), payload.hex())
+
+            async def send():
+                payload = self._build_unlock_payload(action_unlock=True)
+                # Register only after connection/backlog processing, immediately
+                # before the write. The timestamp is the one sent to the lock.
+                sent_at = int.from_bytes(payload[13:17], "big")
+                request = self._unlock_attribution.start(initiator, sent_at, time.monotonic())
+                try:
+                    await self._session.async_send_dp_fire_and_forget(unlock_dp, 0, payload)
+                except BaseException:
+                    self._unlock_attribution.cancel(request)
+                    raise
+
             try:
-                await self._session.async_send_dp_fire_and_forget(unlock_dp, 0, payload)
+                await send()
             except Exception as exc:
                 _LOGGER.warning("Unlock command failed, reconnecting: %s", exc)
                 self._session.is_connected = False
                 await self._async_ensure_connected()
-                payload = self._build_unlock_payload(action_unlock=True)
-                await self._session.async_send_dp_fire_and_forget(unlock_dp, 0, payload)
+                await send()
             await self._fetch_status()
             self.async_set_updated_data(self.state)
             self._reset_idle_timer()

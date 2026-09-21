@@ -94,11 +94,13 @@ class TuyaBLELock(TuyaBLELockEntity, LockEntity, RestoreEntity):
             self.async_write_ha_state()
 
     async def async_unlock(self, **kwargs) -> None:
+        # Capture before awaiting: another service call may replace the entity context.
+        context = self._context
         self._unlocking = True
         self._optimistic = False
         self.async_write_ha_state()
         try:
-            await self.coordinator.async_unlock()
+            await self.coordinator.async_unlock(context=context)
         finally:
             self._unlocking = False
             self.async_write_ha_state()

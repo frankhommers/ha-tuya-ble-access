@@ -194,7 +194,11 @@ class TuyaBLELastUnlockSensor(TuyaBLELockEntity, SensorEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        attrs = {}
+        attrs = {
+            field: self.coordinator.state[f"last_unlock_{field}"]
+            for field in ("ha_user_id", "context_id", "parent_id", "initiator_source")
+            if self.coordinator.state.get(f"last_unlock_{field}") is not None
+        }
         user = self.coordinator.state.get("last_unlock_user")
         by = self.coordinator.state.get("last_unlock_by")
         person = self.coordinator.state.get("last_unlock_person")
@@ -273,7 +277,11 @@ class TuyaBLELastUnlockBySensor(TuyaBLELockEntity, SensorEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        attrs = {}
+        attrs = {
+            field: self.coordinator.state[f"last_unlock_{field}"]
+            for field in ("ha_user_id", "context_id", "parent_id", "initiator_source")
+            if self.coordinator.state.get(f"last_unlock_{field}") is not None
+        }
         person = self.coordinator.state.get("last_unlock_person")
         user = self.coordinator.state.get("last_unlock_user")
         credential = self.coordinator.state.get("last_unlock_credential")
@@ -291,6 +299,9 @@ class TuyaBLELastUnlockBySensor(TuyaBLELockEntity, SensorEntity, RestoreEntity):
             last = await self.async_get_last_state()
             if last and last.state not in (None, "unknown", "unavailable"):
                 self.coordinator.state["last_unlock_by"] = last.state
+                for field in ("ha_user_id", "context_id", "parent_id", "initiator_source"):
+                    self.coordinator.state[f"last_unlock_{field}"] = last.attributes.get(field)
+                self.coordinator.state["last_unlock_person"] = last.attributes.get("person_entity_id")
 
 
 class TuyaBLELastUnlockCredentialSensor(TuyaBLELockEntity, SensorEntity, RestoreEntity):
@@ -298,7 +309,8 @@ class TuyaBLELastUnlockCredentialSensor(TuyaBLELockEntity, SensorEntity, Restore
 
     State is the fingerprint/card/PIN label itself (e.g. 'Left ring') so it
     can be displayed directly on a dashboard tile. Falls back to the raw
-    hardware user id when the credential was not enrolled through HA.
+    hardware slot for an unknown fingerprint/card/PIN. Bluetooth commands do
+    not represent a hardware credential; their initiator is shown by the By sensor.
     """
 
     _attr_translation_key = "last_unlock_credential"
@@ -310,17 +322,24 @@ class TuyaBLELastUnlockCredentialSensor(TuyaBLELockEntity, SensorEntity, Restore
 
     @property
     def native_value(self) -> str | None:
+        method = self.coordinator.state.get("last_unlock_method")
+        if method not in ("fingerprint", "password", "card", "temporary_code"):
+            return None
         credential = self.coordinator.state.get("last_unlock_credential")
         if credential:
             return credential
         user = self.coordinator.state.get("last_unlock_user")
-        if user:
+        if user and method in ("fingerprint", "password", "card"):
             return f"User {user}"
         return None
 
     @property
     def extra_state_attributes(self) -> dict:
-        attrs = {}
+        attrs = {
+            field: self.coordinator.state[f"last_unlock_{field}"]
+            for field in ("ha_user_id", "context_id", "parent_id", "initiator_source")
+            if self.coordinator.state.get(f"last_unlock_{field}") is not None
+        }
         user = self.coordinator.state.get("last_unlock_user")
         by = self.coordinator.state.get("last_unlock_by")
         method = self.coordinator.state.get("last_unlock_method")
