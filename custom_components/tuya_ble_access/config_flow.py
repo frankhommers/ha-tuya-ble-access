@@ -32,6 +32,7 @@ from .activation import (
     PostBindPersistenceActivationError,
     StorageUnavailableActivationError,
     async_activate_lock,
+    async_check_lock_connection,
     validate_activation_seed,
 )
 from .const import (
@@ -297,6 +298,8 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._activation_account = None
         self._activation_source = None
         self._activation_existing_record = None
+        self._selected_pairing_data = None
+        self._binding_checked_mac = None
 
     # ---- BLE discovery ----
 
@@ -400,6 +403,14 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._mac, category or "(unknown)",
             )
             return self.async_abort(reason="not_a_lock" if category else "device_type_unknown")
+
+        if (
+            self._binding_checked_mac != self._mac
+            or self._selected_pairing_data != validate_activation_seed(cloud_result, self._uuid or "")
+        ):
+            self._selected_pairing_data = validate_activation_seed(cloud_result, self._uuid or "")
+            return await self.async_step_connection_check()
+        self._binding_checked_mac = None
 
         auth_key = cloud_result.get("auth_key", "")
         local_key = cloud_result.get("local_key", "")
@@ -632,7 +643,7 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 key_status = "✓"
             except MissingActivationSeedError:
                 key_status = "?"
-            summary.append(f"{record.get('name') or mac} | {category or '?'} | {record.get('product_id') or '?'} | {mac} | 🔑 {key_status}")
+            summary.append(f"{record.get('name') or mac} | {category or '?'} | {record.get('product_id') or '?'} | {mac} | {key_status}")
             if category not in LOCK_CATEGORIES or active.get_device(mac):
                 continue
             choices[mac] = f"{record.get('name') or mac} — {record.get('product_id') or category} — {mac}"
@@ -647,19 +658,11 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 except MissingActivationSeedError:
                     errors["base"] = "activation_seed_missing"
                 else:
-                    observed_unbound = self._pairing_mode_discovery and self._mac == mac
                     self._mac, self._name, self._uuid = mac, record.get("name") or mac, seed["uuid"]
-                    # Never infer a reset from absence: only a received advertisement
-                    # can establish pairing mode. Activation always needs confirmation.
-                    self._pairing_mode_discovery = observed_unbound
+                    self._selected_pairing_data = seed
+                    self._binding_checked_mac = None
                     await ActivationSeedStore(self.hass).async_save_seed(mac, seed)
-                    entries = self._async_current_entries()
-                    if entries:
-                        if observed_unbound:
-                            self._activation_entry_id = entries[0].entry_id
-                            return await self.async_step_check_device()
-                        return await self._async_auto_add_device(entries[0], active)
-                    return await self._create_hub_with_device(seed)
+                    return await self.async_step_connection_check()
         if not choices:
             # A new hub can be saved even when the account has no importable locks.
             if not self._async_current_entries() and self._email:
@@ -670,6 +673,58 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({vol.Required(CONF_DEVICE_MAC): vol.In(choices)}),
             errors=errors,
             description_placeholders={"count": str(len(choices)), "total": str(len(records)), "inventory": "\n\n".join(summary)},
+        )
+
+    async def async_step_connection_check(self, user_input=None):
+        """Verify the selected physical lock before creating an active device."""
+        errors = {}
+        if self._selected_pairing_data is None:
+            return await self.async_step_saved_locks()
+        entries = self._async_current_entries()
+        entry = entries[0] if entries else None
+        if user_input is not None:
+            self._binding_checked_mac = None
+            if not user_input.get("check_now", True):
+                if entry is None:
+                    return await self._create_hub_entry()
+                return self.async_abort(reason="pairing_data_saved")
+            result = await async_check_lock_connection(
+                self.hass, address=self._mac, pairing_data=self._selected_pairing_data, entry=entry,
+            )
+            if result == "bound":
+                self._pairing_mode_discovery = False
+                self._binding_checked_mac = self._mac
+                if entry is None:
+                    return await self._create_hub_with_device(self._selected_pairing_data)
+                active = DeviceStore(self.hass)
+                await active.async_load()
+                if active.get_device(self._mac):
+                    return self.async_abort(reason="already_configured")
+                return await self._async_auto_add_device(entry, active)
+            if result == "unbound":
+                self._pairing_mode_discovery = True
+                if entry is None:
+                    return await self.async_step_save_account_for_pairing()
+                self._activation_entry_id = entry.entry_id
+                self._activation_seed = None
+                return await self.async_step_confirm_new_device()
+            errors["base"] = result if result in (
+                "bluetooth_unavailable", "pairing_data_rejected", "connection_unverified"
+            ) else "connection_unverified"
+        return self.async_show_form(
+            step_id="connection_check",
+            data_schema=vol.Schema({vol.Optional("check_now", default=True): bool}),
+            errors=errors,
+            description_placeholders={"name": self._name or self._mac, "mac": self._mac},
+        )
+
+    async def async_step_save_account_for_pairing(self, user_input=None):
+        """Save the first account without treating the unbound lock as connected."""
+        if user_input is not None:
+            return await self._create_hub_entry()
+        return self.async_show_form(
+            step_id="save_account_for_pairing", data_schema=vol.Schema({}),
+            description_placeholders={"name": self._name or self._mac},
         )
 
     async def async_step_migrate(self, user_input=None):
@@ -838,6 +893,14 @@ class TuyaBLELockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._mac, category or "(unknown)",
             )
             return await self._create_hub_entry()
+
+        if (
+            self._binding_checked_mac != self._mac
+            or self._selected_pairing_data != validate_activation_seed(cloud_result, self._uuid or "")
+        ):
+            self._selected_pairing_data = validate_activation_seed(cloud_result, self._uuid or "")
+            return await self.async_step_connection_check()
+        self._binding_checked_mac = None
 
         auth_key = cloud_result.get("auth_key", "")
         local_key = cloud_result.get("local_key", "")

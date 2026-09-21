@@ -2,8 +2,8 @@
 
 Tuya BLE Access is a Home Assistant custom integration for local Bluetooth lock
 control. Installation and supported profiles are described in the [README](../README.md).
-The changed activation behavior and remaining physical checks for version 0.3.0
-are listed in the [release notes](releases/0.3.0.md).
+The changed activation behavior and remaining physical checks for version 0.3.1
+are listed in the [release notes](releases/0.3.1.md).
 
 ## Setup
 
@@ -12,23 +12,33 @@ are listed in the [release notes](releases/0.3.0.md).
 2. Open **Tuya BLE Access** in Settings → Devices & services and start adding a
    device/hub. Sign in with the same account on first setup.
 3. The import retrieves the account's devices, separate product information and
-   available Bluetooth keys in one login. Records are saved locally by MAC.
+   available pairing details in one login. Records are saved locally by MAC.
 4. Choose a recognized lock from **Add a saved lock**. A lock does not need to
    advertise, be awake or be in Bluetooth range to appear in this list.
-5. For actual local commands, keep the lock near a Bluetooth adapter/proxy and
-   close any phone app holding its connection. Radio reachability and whether
-   the saved keys work can only be verified by communicating with the lock.
+5. Choose **Check the lock connection**, wake it near the Bluetooth adapter/proxy
+   and close the Tuya app. This only reads the physical binding state; it cannot
+   pair, reset or unlock the device. Allow up to about 35 seconds.
+6. A paired lock answering with its saved connection details is added. An
+   unpaired lock opens a separate pairing confirmation. If it cannot be checked,
+   its details remain saved and no active device is added. Retry, or clear
+   **Check the connection now** to save and continue later.
+
+On the first account setup, an unpaired lock first offers to save the account
+without an active lock. Then reopen **Add a lock → Choose a saved lock** to
+continue with the pairing confirmation.
 
 With an existing hub, its native **Add hub** action now opens **Add a lock**:
-choose **Import devices and keys from Tuya** or **Choose a saved lock**. Importing
-populates the registry; selecting a lock creates its active HA device. The list
-shows names, MACs, product IDs, categories and key completeness, never key values.
+choose **Import devices and pairing details from Tuya** or **Choose a saved lock**.
+Importing populates the registry; selecting a lock starts a connection check.
+Only a successful check or separately confirmed and verified pairing creates
+its active HA device. The list shows names, MACs, product IDs, categories and
+pairing-detail completeness, never the private values.
 Unknown types stay unknown and are not offered as locks. A generic Tuya/BLE name
 is not type evidence. Product references are joined by exact product ID; no K3
 product ID is ever used as a default, including in advanced manual setup.
 
 Bluetooth discovery does not log in automatically. A previously saved bound lock
-can be imported from its local keys; an unknown bound device offers an explicit
+can be checked using its saved pairing details; an unknown bound device offers an explicit
 account import. Unbound discovery retains a separate recovery confirmation.
 
 The advanced local setup option imports previously obtained credentials for an
@@ -41,8 +51,8 @@ activation keys first. Only if neither has complete, valid credentials does it
 consult the configured Tuya account. Devices absent from that account are directed
 to app pairing; incomplete credentials never lead to Bluetooth activation.
 
-The confirmation identifies locally saved keys or checked Tuya credentials.
-Cloud credentials are saved before the Bluetooth attempt, separately from active
+The confirmation explains that saved pairing details are complete, but the
+physical lock must still accept them. Cloud data is saved before Bluetooth, separately from active
 devices. A failed attempt does not add a lock, but its keys remain available for
 a subsequent attempt without cloud access. Existing device records take precedence
 over an older cached activation seed. Bluetooth still has to verify the keys.
@@ -84,10 +94,17 @@ A proxy must support active GATT connections, even if it scans passively.
 
 | Current state | Next step | Factory reset? |
 | --- | --- | --- |
-| Lock is already paired in Tuya / Smart Life | Retrieve its keys and import it into HA; close the app panel for BLE access | No |
+| Lock is already paired in Tuya / Smart Life | Import its pairing details, then check the connection; close the app panel for BLE access | No |
 | Lock was already reset and advertises as `TyOS` | Open discovery, check saved/account credentials, then separately confirm reactivation | Do not reset it again |
 | New lock with no saved or account credentials | Pair in Tuya / Smart Life first, then add to HA | Follow the manufacturer's initial setup; HA does not require a reset |
 | No discovery or Bluetooth timeout | Wake the lock near the proxy, close the app and stop competing connections | No |
+
+A cloud record can outlive a factory reset. Neither that record nor an old
+advertisement overrides the live Bluetooth result. A reply using only the
+activation authentication data does not prove the saved normal connection
+details work. In that case, import updated details; no automatic re-pairing is
+attempted. Ordinary reconnection also refuses to send PAIR to an unbound device,
+including if it was reset after setup's check.
 
 A factory reset deliberately erases the existing pairing/configuration. It is
 not a discovery, update, import or timeout-recovery step. Use it only when you

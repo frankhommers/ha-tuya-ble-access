@@ -570,3 +570,91 @@ def test_bulk_key_import_logs_in_once_and_retains_partial_failures(monkeypatch):
     assert result['AA:BB:CC:DD:EE:01']['key_error'] is True
     assert records['AA:BB:CC:DD:EE:01'][0]['local_key'] == 'known'
     assert result['AA:BB:CC:DD:EE:02']['local_key'] == 'complete'
+
+
+def test_binding_probe_uses_only_device_info_and_requires_matching_security(monkeypatch):
+    _install_homeassistant_stubs()
+    _install_ble_stubs()
+    module = _load_package_module('ble_session')
+    async def no_sleep(_delay):
+        pass
+    monkeypatch.setattr(module.asyncio, 'sleep', no_sleep)
+
+    async def run_case(replies, expected, expected_modes):
+        session = module.TuyaBLELockSession(
+            object(), types.SimpleNamespace(address='AA:BB:CC:DD:EE:FF'),
+            b'abcdef', b'device-id', 'test-device-uuid',
+            auth_key=bytes(16), auth_random=b'1' * 16,
+            local_key=b'abcdefghijklmnop', sec_key=b'ponmlkjihgfedcba',
+            verify_key=b'abcd',
+        )
+        sent = []
+        async def connect():
+            return True
+        async def send(cmd, data, sec_flag, fixed_iv=None):
+            sent.append((cmd, sec_flag))
+            reply = replies[len(sent)-1]
+            if isinstance(reply, Exception): raise reply
+            if reply is None: return
+            response_sec, bound = reply
+            device_info = bytes([0, 0, 5, 0, 0, bound]) + b'123456'
+            frame = module.ble_protocol.TuyaBleFrame(sn=1, ack_sn=1, code=module.CMD_DEVICE_INFO, data=device_info)
+            wire = module.ble_protocol.encrypt_frame(session._keys.get(response_sec, b''), response_sec, frame.to_bytes())
+            session._notif_buf.extend(module.ble_protocol.fragment(wire, 20))
+        session._connect_for_pairing = connect
+        session._send_encrypted = send
+        assert await session.async_check_binding() == expected
+        assert sent == [(module.CMD_DEVICE_INFO, sec) for sec in expected_modes]
+
+    async def run():
+        normal, auth = module.SEC_NEW_SEC, module.SEC_ENCRYPTED_AUTH_KEY
+        await run_case([(normal, 1)], 'bound', [normal])
+        await run_case([(normal, 0)], 'unbound', [normal])
+        await run_case([None, (auth, 0)], 'unbound', [normal, auth])
+        await run_case([RuntimeError('saved key rejected'), (auth, 0)], 'unbound', [normal, auth])
+        await run_case([None, (auth, 1)], 'pairing_data_rejected', [normal, auth])
+        await run_case([(auth, 1), (auth, 1)], 'pairing_data_rejected', [normal, auth])
+        await run_case([(0, 1), None], 'connection_unverified', [normal, auth])
+        await run_case([(normal, 2), (auth, 2)], 'connection_unverified', [normal, auth])
+        await run_case([None, None], 'connection_unverified', [normal, auth])
+    asyncio.run(run())
+
+
+def test_normal_reconnect_never_sends_pair_to_unbound_or_invalid_device(monkeypatch):
+    _install_homeassistant_stubs()
+    _install_ble_stubs()
+    module = _load_package_module('ble_session')
+    async def no_sleep(_delay):
+        pass
+    monkeypatch.setattr(module.asyncio, 'sleep', no_sleep)
+    async def run(bound):
+        class Client:
+            services = []
+            is_connected = True
+            async def stop_notify(self, uuid):
+                pass
+            async def start_notify(self, uuid, callback):
+                pass
+            async def disconnect(self):
+                self.is_connected = False
+        async def connect(**kwargs):
+            return Client()
+        monkeypatch.setattr(module, 'establish_connection', connect)
+        session = module.TuyaBLELockSession(
+            object(), types.SimpleNamespace(address='AA:BB:CC:DD:EE:FF'),
+            b'abcdef', b'device-id', 'test-device-uuid',
+            local_key=b'abcdefghijklmnop', sec_key=b'ponmlkjihgfedcba',
+        )
+        session._resolve_gatt_uuids = lambda: ('write', 'notify')
+        sent = []
+        async def send(cmd, data, sec_flag, **kwargs):
+            sent.append(cmd)
+            frame = module.ble_protocol.TuyaBleFrame(sn=1, ack_sn=1, code=module.CMD_DEVICE_INFO, data=bytes([0, 0, 5, 0, 0, bound]) + b'123456')
+            wire = module.ble_protocol.encrypt_frame(session._keys[sec_flag], sec_flag, frame.to_bytes())
+            session._notif_buf.extend(module.ble_protocol.fragment(wire, 20))
+        session._send_encrypted = send
+        assert await session.async_connect_single_attempt() is False
+        assert sent == [module.CMD_DEVICE_INFO]
+        assert not session.is_connected
+    asyncio.run(run(0))
+    asyncio.run(run(2))

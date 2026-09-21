@@ -179,6 +179,7 @@ def _load_config_flow_module():
     voluptuous = types.ModuleType("voluptuous")
     voluptuous.Schema = lambda value: value
     voluptuous.Required = lambda key, **_kwargs: key
+    voluptuous.Optional = lambda key, **_kwargs: key
     voluptuous.In = lambda choices: choices
     homeassistant = types.ModuleType("homeassistant")
     components = types.ModuleType("homeassistant.components")
@@ -302,6 +303,7 @@ def _load_config_flow_module():
         PostBindPersistenceActivationError
     )
     activation_stub.async_activate_lock = None
+    activation_stub.async_check_lock_connection = None
 
     replacements = {
         "voluptuous": voluptuous,
@@ -762,6 +764,8 @@ async def _discover_and_check(flow, discovery):
         result = await flow.async_step_sync_cloud({})
         if result.get("step_id") == "saved_locks":
             result = await flow.async_step_saved_locks({"device_mac": flow._mac})
+    if result.get("step_id") == "connection_check":
+        result = await flow.async_step_connection_check({"check_now": True})
     return result
 
 
@@ -806,6 +810,9 @@ def _new_config_flow(
         return _seed()
 
     monkeypatch.setattr(config_flow, "async_fetch_auth_key", default_cloud_fetch)
+    async def default_connection_check(*_args, **_kwargs):
+        return "bound"
+    monkeypatch.setattr(config_flow, "async_check_lock_connection", default_connection_check)
     return flow
 
 
@@ -1941,6 +1948,13 @@ def test_first_tyos_discovery_creates_only_hub_then_routes_to_confirmation(
 
         assert create_result["step_id"] == "saved_locks"
         create_result = await flow.async_step_saved_locks({"device_mac": "AA:BB:CC:DD:EE:FF"})
+        assert create_result["step_id"] == "connection_check"
+        async def unbound(*args, **kwargs):
+            return "unbound"
+        monkeypatch.setattr(config_flow, "async_check_lock_connection", unbound)
+        result = await flow.async_step_connection_check({"check_now": True})
+        assert result["step_id"] == "save_account_for_pairing"
+        create_result = await flow.async_step_save_account_for_pairing({})
         assert create_result["type"] == "create_entry"
         assert store.devices == {}
         assert "persist" not in events
@@ -1980,6 +1994,9 @@ def test_first_non_tyos_discovery_keeps_bound_device_persistence(monkeypatch):
 
         assert result["step_id"] == "saved_locks"
         result = await flow.async_step_saved_locks({"device_mac": "AA:BB:CC:DD:EE:FF"})
+        assert result["step_id"] == "connection_check"
+        assert not store.devices
+        result = await flow.async_step_connection_check({"check_now": True})
         assert result["type"] == "create_entry"
         assert store.devices["AA:BB:CC:DD:EE:FF"]["name"] == "Bound First Lock"
         assert events.count("persist") == 1
@@ -3391,6 +3408,9 @@ def test_bound_advertisement_uses_import_even_with_missing_or_stale_name(monkeyp
         discovery.manufacturer_data = {}
         result = await flow.async_step_bluetooth(discovery)
         assert flow._pairing_mode_discovery is False
+        assert result["step_id"] == "connection_check"
+        assert not store.devices
+        result = await flow.async_step_connection_check({"check_now": True})
         assert result == {"type": "abort", "reason": "device_added"}
         assert store.devices["AA:BB:CC:DD:EE:FF"]["local_key"] == "abcdefghijklmnop"
 
@@ -3471,7 +3491,7 @@ def test_discovery_never_logs_in_before_explicit_inventory_import(monkeypatch):
     asyncio.run(run())
 
 
-def test_saved_inventory_lists_and_imports_sleeping_lock_without_cloud(monkeypatch):
+def test_saved_inventory_keeps_sleeping_lock_pending_without_cloud(monkeypatch):
     async def run():
         store = FakeStore([])
         flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
@@ -3490,8 +3510,13 @@ def test_saved_inventory_lists_and_imports_sleeping_lock_without_cloud(monkeypat
         assert form['description_placeholders']['count'] == '1'
         assert form['description_placeholders']['total'] == '2'
         result = await flow.async_step_saved_locks({'device_mac': 'AA:BB:CC:DD:EE:01'})
-        assert result['reason'] == 'device_added'
-        assert list(store.devices) == ['AA:BB:CC:DD:EE:01']
+        assert result['step_id'] == 'connection_check'
+        assert not store.devices
+        monkeypatch.setattr(config_flow, 'async_check_lock_connection', unexpected)
+        result = await flow.async_step_connection_check({'check_now': False})
+        assert result['reason'] == 'pairing_data_saved'
+        assert not store.devices
+        assert 'AA:BB:CC:DD:EE:01' in store.inventory
     asyncio.run(run())
 
 
@@ -3506,4 +3531,182 @@ def test_known_gateway_radio_packet_does_not_offer_lock_setup(monkeypatch, name)
         monkeypatch.setattr(config_flow, "async_sync_cloud_inventory", unexpected)
         result = await flow.async_step_bluetooth(_discovery(name))
         assert result == {"type": "abort", "reason": "not_a_lock"}
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('outcome', ['bluetooth_unavailable', 'connection_unverified', 'pairing_data_rejected', 'unexpected'])
+def test_saved_lock_failed_check_stays_pending_and_can_retry(monkeypatch, outcome):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        mac = 'AA:BB:CC:DD:EE:FF'
+        store.inventory[mac] = _seed()
+        async def check(*args, **kwargs):
+            return outcome
+        async def unexpected(*args, **kwargs):
+            raise AssertionError('Checking must not log in or pair')
+        monkeypatch.setattr(config_flow, 'async_check_lock_connection', check)
+        monkeypatch.setattr(config_flow, 'async_sync_cloud_inventory', unexpected)
+        monkeypatch.setattr(config_flow, 'async_activate_lock', unexpected)
+        result = await flow.async_step_saved_locks({'device_mac': mac})
+        assert result['step_id'] == 'connection_check'
+        result = await flow.async_step_connection_check({'check_now': True})
+        assert result['step_id'] == 'connection_check'
+        assert result['errors']['base'] == ('connection_unverified' if outcome == 'unexpected' else outcome)
+        assert not store.devices
+        assert mac in store.inventory and mac in store.activation_seeds
+        async def bound(*args, **kwargs):
+            return 'bound'
+        monkeypatch.setattr(config_flow, 'async_check_lock_connection', bound)
+        result = await flow.async_step_connection_check({'check_now': True})
+        assert result['reason'] == 'device_added'
+        assert list(store.devices) == [mac]
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('via_discovery', [False, True])
+def test_live_unbound_state_requires_separate_pairing_confirmation(monkeypatch, via_discovery):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        mac = 'AA:BB:CC:DD:EE:FF'
+        store.inventory[mac] = _seed()
+        calls = []
+        async def check(*args, **kwargs):
+            calls.append('check')
+            return 'unbound'
+        async def activate(*args, **kwargs):
+            calls.append('pair')
+            assert kwargs['activation_seed'] == activation.validate_activation_seed(_seed())
+        async def unexpected(*args, **kwargs):
+            raise AssertionError('Saved pairing details must not cause a cloud login')
+        monkeypatch.setattr(config_flow, 'async_check_lock_connection', check)
+        monkeypatch.setattr(config_flow, 'async_activate_lock', activate)
+        monkeypatch.setattr(config_flow, 'async_sync_cloud_inventory', unexpected)
+        if via_discovery:
+            # An old bound advertisement must not override a live unbound reply.
+            discovery = _discovery('Bound Lock')
+            discovery.service_data = {'0000fd50-0000-1000-8000-00805f9b34fb': bytes.fromhex('590c0008626132716b313737')}
+            result = await flow.async_step_bluetooth(discovery)
+        else:
+            result = await flow.async_step_saved_locks({'device_mac': mac})
+        assert result['step_id'] == 'connection_check'
+        assert calls == [] and not store.devices
+        result = await flow.async_step_connection_check({'check_now': True})
+        assert result['step_id'] == 'confirm_local_activation'
+        assert calls == ['check'] and not store.devices
+        result = await flow.async_step_confirm_local_activation({})
+        assert result['reason'] == 'device_added'
+        assert calls == ['check', 'pair']
+    asyncio.run(run())
+
+
+def test_first_account_can_be_saved_without_checking_or_adding_a_lock(monkeypatch):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        flow.current_entries = []
+        flow._email, flow._password = 'user@example.com', 'secret'
+        flow._country, flow._region = '31', 'eu'
+        store.inventory['AA:BB:CC:DD:EE:FF'] = _seed()
+        async def unexpected(*args, **kwargs):
+            raise AssertionError('Save for later must not connect or pair')
+        monkeypatch.setattr(config_flow, 'async_check_lock_connection', unexpected)
+        monkeypatch.setattr(config_flow, 'async_activate_lock', unexpected)
+        await flow.async_step_saved_locks({'device_mac': 'AA:BB:CC:DD:EE:FF'})
+        result = await flow.async_step_connection_check({'check_now': False})
+        assert result['type'] == 'create_entry'
+        assert not store.devices and store.activation_seeds
+    asyncio.run(run())
+
+
+def test_refreshed_pairing_details_require_a_new_physical_check(monkeypatch):
+    async def run():
+        store = FakeStore([])
+        flow = _new_config_flow(monkeypatch, FakeHass([]), _entry(), store)
+        mac = 'AA:BB:CC:DD:EE:FF'
+        store.inventory[mac] = _seed()
+        async def check(*args, **kwargs):
+            # Another task imports a newer key generation while the probe runs.
+            store.inventory[mac] = _seed(local_key='new-local-key001')
+            return 'bound'
+        monkeypatch.setattr(config_flow, 'async_check_lock_connection', check)
+        await flow.async_step_saved_locks({'device_mac': mac})
+        result = await flow.async_step_connection_check({'check_now': True})
+        assert result['step_id'] == 'connection_check'
+        assert not store.devices
+        assert flow._selected_pairing_data['local_key'] == 'new-local-key001'
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('outcome', ['bound', 'unbound', 'connection_unverified', 'exception', 'cancel'])
+def test_connection_probe_always_disconnects_and_releases_locks(monkeypatch, outcome):
+    async def run():
+        events = []
+        hass = FakeHass(events)
+        entry = _entry()
+        op_lock = asyncio.Lock()
+        class ExistingSession:
+            async def async_disconnect(self):
+                assert op_lock.locked()
+                events.append('existing_disconnected')
+        entry.runtime_data = types.SimpleNamespace(coordinators={
+            'AA:BB:CC:DD:EE:FF': types.SimpleNamespace(_op_lock=op_lock, _idle_timer=None, _session=ExistingSession())
+        })
+        _install_common_fakes(monkeypatch, hass, FakeStore(events), _seed(), events)
+        class Probe:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def async_check_binding(self):
+                assert op_lock.locked()
+                events.append('probe')
+                if outcome == 'exception': raise RuntimeError('failed')
+                if outcome == 'cancel': raise asyncio.CancelledError()
+                return outcome
+            async def async_disconnect(self):
+                assert op_lock.locked()
+                events.append('probe_disconnected')
+        monkeypatch.setattr(activation, 'TuyaBLELockSession', Probe)
+        coro = activation.async_check_lock_connection(hass, address='AA:BB:CC:DD:EE:FF', pairing_data=_seed(), entry=entry)
+        if outcome == 'cancel':
+            with pytest.raises(asyncio.CancelledError): await coro
+        else:
+            assert await coro == ('connection_unverified' if outcome == 'exception' else outcome)
+        assert events == ['ble', 'existing_disconnected', 'probe', 'probe_disconnected']
+        assert not op_lock.locked()
+        assert not hass.data[activation.DOMAIN]['activation_locks']['AA:BB:CC:DD:EE:FF'].locked()
+    asyncio.run(run())
+
+
+def test_connection_probe_offline_does_not_create_a_session(monkeypatch):
+    async def run():
+        hass = FakeHass([])
+        monkeypatch.setattr(activation.bluetooth, 'async_ble_device_from_address', lambda *args, **kwargs: None)
+        def unexpected(*args, **kwargs): raise AssertionError('No radio device')
+        monkeypatch.setattr(activation, 'TuyaBLELockSession', unexpected)
+        result = await activation.async_check_lock_connection(hass, address='AA:BB:CC:DD:EE:FF', pairing_data=_seed())
+        assert result == 'bluetooth_unavailable'
+    asyncio.run(run())
+
+
+def test_connection_probe_deadline_cleans_up_without_persisting(monkeypatch):
+    async def run():
+        events = []
+        hass = FakeHass(events)
+        _install_common_fakes(monkeypatch, hass, FakeStore(events), _seed(), events)
+        original_timeout = asyncio.timeout
+        def short_timeout(delay):
+            return original_timeout(0.01 if delay == 30 else delay)
+        monkeypatch.setattr(activation.asyncio, 'timeout', short_timeout)
+        class Probe:
+            def __init__(self, *args, **kwargs): pass
+            async def async_check_binding(self):
+                await asyncio.Event().wait()
+            async def async_disconnect(self):
+                events.append('disconnected')
+        monkeypatch.setattr(activation, 'TuyaBLELockSession', Probe)
+        result = await activation.async_check_lock_connection(hass, address='AA:BB:CC:DD:EE:FF', pairing_data=_seed())
+        assert result == 'connection_unverified'
+        assert events == ['ble', 'disconnected']
+        assert not hass.data[activation.DOMAIN]['activation_locks']['AA:BB:CC:DD:EE:FF'].locked()
     asyncio.run(run())

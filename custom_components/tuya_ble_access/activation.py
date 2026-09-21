@@ -380,3 +380,42 @@ async def async_activate_lock(
                 raise
             raise completion_error
         return record
+
+
+async def async_check_lock_connection(hass, *, address: str, pairing_data: dict, entry=None) -> str:
+    """Inspect a lock without binding it or creating an active HA device."""
+    cloud = validate_activation_seed(pairing_data)
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    lock = domain_data.setdefault("activation_locks", {}).setdefault(address.upper(), asyncio.Lock())
+    session = None
+    try:
+        async with asyncio.timeout(30), lock, AsyncExitStack() as connections:
+            device = bluetooth.async_ble_device_from_address(hass, address.upper(), connectable=True)
+            if device is None:
+                return "bluetooth_unavailable"
+            coordinator = getattr(getattr(entry, "runtime_data", None), "coordinators", {}).get(address.upper())
+            if coordinator is not None:
+                await connections.enter_async_context(coordinator._op_lock)
+                if coordinator._idle_timer is not None:
+                    coordinator._idle_timer.cancel()
+                    coordinator._idle_timer = None
+                await coordinator._session.async_disconnect()
+            local_key = cloud["local_key"].encode("ascii")
+            session = TuyaBLELockSession(
+                hass, device, local_key[:6],
+                (cloud["device_id"].encode("ascii") + b"\x00" * 22)[:22], cloud["uuid"],
+                auth_key=bytes.fromhex(cloud["auth_key"]), auth_random=bytes.fromhex(cloud["auth_random"]),
+                local_key=local_key, sec_key=cloud["sec_key"].encode("ascii"),
+                verify_key=bytes.fromhex(cloud["verify_key"]), check_code=cloud.get("check_code", ""),
+            )
+            # Disconnect before releasing either the activation or operation lock.
+            try:
+                return await session.async_check_binding()
+            finally:
+                try:
+                    async with asyncio.timeout(5):
+                        await session.async_disconnect()
+                except Exception:
+                    _LOGGER.debug("Could not finish disconnecting after connection check")
+    except Exception:
+        return "connection_unverified"

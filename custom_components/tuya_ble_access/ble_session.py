@@ -86,6 +86,8 @@ def _build_v5_pair_payload(
 def _parse_v5_device_info(data: bytes) -> dict:
     if len(data) < 12:
         raise ValueError(f"V5 device info too short: {len(data)} bytes")
+    if data[5] not in (0, 1):
+        raise ValueError("Invalid device binding state")
     proto_index = data[2] * 10 + data[3]
     flag = data[4]
     support_struct_dp = None
@@ -569,6 +571,10 @@ class TuyaBLELockSession:
 
                 for f in frames:
                     if f["cmd"] == CMD_DEVICE_INFO and len(f["data"]) >= 12:
+                        if f["data"][5] != 1:
+                            # Ordinary reconnect must never bind a reset device.
+                            await self.async_disconnect()
+                            return False
                         srand = f["data"][6:12]
                         _LOGGER.debug("Device info OK, srand=%s", srand.hex())
                         break
@@ -915,8 +921,36 @@ class TuyaBLELockSession:
         frames = parse_frames(self._keys, raw)
         for f in frames:
             if f["cmd"] == CMD_DEVICE_INFO:
-                return _parse_v5_device_info(f["data"])
+                return {**_parse_v5_device_info(f["data"]), "security_flag": f["sec_flag"]}
         return None
+
+    async def async_check_binding(self) -> str:
+        """Read binding state only: no PAIR, reset, DP or unlock commands.
+
+        A bound reply authenticated with saved connection data proves that data
+        is accepted. An auth-key-only reply cannot prove the saved local pairing.
+        The caller bounds the entire probe and always disconnects.
+        """
+        modes = [(SEC_NEW_SEC if self._btsc else SEC_LOGIN_KEY, None)]
+        if self._auth_key and self._auth_random:
+            modes.append((SEC_ENCRYPTED_AUTH_KEY, self._auth_random))
+        for sec_flag, fixed_iv in modes:
+            try:
+                if not await self._connect_for_pairing():
+                    continue
+                info = await self._request_v5_device_info(sec_flag, fixed_iv=fixed_iv)
+            except Exception:
+                # Reset devices may reject saved connection data before answering
+                # an auth-key probe. Cancellation still propagates to the caller.
+                continue
+            if info is None or info.get("security_flag") != sec_flag:
+                continue
+            if not info["is_bound"]:
+                return "unbound"
+            if sec_flag == SEC_ENCRYPTED_AUTH_KEY:
+                return "pairing_data_rejected"
+            return "bound"
+        return "connection_unverified"
 
     async def _verify_v5_bound(self) -> bool:
         for attempt in range(3):
