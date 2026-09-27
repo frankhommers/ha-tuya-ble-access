@@ -46,7 +46,7 @@ _BINARY_SENSOR_KEYS = {"doorbell", "hijack", "message"}
 
 def _platforms_for_devices(profiles: dict[str, dict]) -> list[Platform]:
     """Determine which platforms to load based on all device profiles."""
-    platforms = {Platform.LOCK, Platform.SENSOR, Platform.BUTTON, Platform.SWITCH}
+    platforms = {Platform.LOCK, Platform.SENSOR, Platform.BUTTON, Platform.SWITCH, Platform.SELECT}
     for profile in profiles.values():
         entities = profile.get("entities", {})
         select_keys = ("volume_select", "language_select", "unlock_mode_select")
@@ -222,6 +222,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sec_key=sec_key_b,
             verify_key=verify_key_b,
             check_code=dev_data.get("check_code", ""),
+            bluetooth_source=dev_data.get("bluetooth_source"),
         )
 
         coordinator = TuyaBLELockCoordinator(
@@ -329,5 +330,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator._keepalive_task.cancel()
         if coordinator._idle_timer is not None:
             coordinator._idle_timer.cancel()
-        await coordinator._session.async_disconnect()
+        await coordinator._session.async_shutdown()
     return await hass.config_entries.async_unload_platforms(entry, data.platforms)

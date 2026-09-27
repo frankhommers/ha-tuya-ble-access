@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.components import bluetooth
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from .const import DOMAIN
 from .entity import TuyaBLELockEntity
 from .models import TuyaBLELockData
 
@@ -38,6 +41,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     data: TuyaBLELockData = entry.runtime_data
     entities = []
     for mac, coordinator in data.coordinators.items():
+        entities.append(TuyaBLEBluetoothProxySelect(coordinator, entry))
         profile = coordinator.profile or {}
         entities_cfg = profile.get("entities", {})
         vol_cfg = entities_cfg.get("volume_select")
@@ -130,3 +134,58 @@ class TuyaBLEEnumSelect(TuyaBLELockEntity, SelectEntity, RestoreEntity):
         value = self._label_to_val.get(_option_key(option))
         if value is not None:
             await self.coordinator.async_set_enum_dp(self._dp, value, self._state_key)
+
+
+class TuyaBLEBluetoothProxySelect(TuyaBLELockEntity, SelectEntity):
+    """Choose a strict route per lock; automatic retains HA's normal routing."""
+
+    _attr_translation_key = "bluetooth_proxy"
+    _attr_icon = "mdi:bluetooth-connect"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    @property
+    def unique_id(self):
+        return f"{self._mac}_bluetooth_proxy"
+
+    @property
+    def available(self):
+        # Changing a broken route must remain possible while the lock is offline.
+        return True
+
+    def _routes(self):
+        routes = {"automatic": None}
+        for scanner in bluetooth.async_current_scanners(self.hass):
+            if scanner.connectable:
+                routes[f"{scanner.name} [{scanner.source}]"] = scanner.source
+        source = self.coordinator.device_data.get("bluetooth_source")
+        if source and source not in routes.values():
+            routes[source] = source
+        return routes
+
+    @property
+    def options(self):
+        return list(self._routes())
+
+    @property
+    def current_option(self):
+        source = self.coordinator.device_data.get("bluetooth_source")
+        return next(label for label, value in self._routes().items() if value == source)
+
+    async def async_select_option(self, option):
+        routes = self._routes()
+        if option not in routes:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="bluetooth_proxy_unavailable",
+            )
+        source = routes[option]
+        if source:
+            from bleak import BleakClient
+            from .bluetooth_route import client_for_source
+            try:
+                client_for_source(BleakClient, source)
+            except Exception as exc:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="bluetooth_proxy_unsupported",
+                ) from exc
+        await self.coordinator.async_set_bluetooth_source(source)
+        self.async_write_ha_state()

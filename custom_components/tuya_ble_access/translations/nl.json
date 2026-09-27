@@ -260,6 +260,12 @@
           "finger_card": "Vingerafdruk en kaart",
           "password_card": "Pincode en kaart"
         }
+      },
+      "bluetooth_proxy": {
+        "name": "Bluetooth-proxy",
+        "state": {
+          "automatic": "Automatisch"
+        }
       }
     },
     "number": {
@@ -734,6 +740,15 @@
     },
     "migration_restart_required": {
       "message": "Herstart Home Assistant om de domeinmigratie af te ronden."
+    },
+    "local_refresh_failed": {
+      "message": "Kan het slot niet via Bluetooth uitlezen. Maak het slot wakker en controleer de Bluetooth-proxy. Bekijk de debuglog van de integratie voor details."
+    },
+    "bluetooth_proxy_unavailable": {
+      "message": "De geselecteerde Bluetooth-proxy is niet meer beschikbaar. Kies een huidige proxy of Automatisch."
+    },
+    "bluetooth_proxy_unsupported": {
+      "message": "Deze Home Assistant-versie kan geen vaste Bluetooth-proxy afdwingen. Gebruik Automatisch."
     }
   }
 }

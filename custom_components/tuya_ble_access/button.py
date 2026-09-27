@@ -38,8 +38,18 @@ class TuyaBLERefreshStatusButton(TuyaBLELockEntity, ButtonEntity):
     def unique_id(self):
         return f"{self._mac}_refresh"
 
+    @property
+    def available(self) -> bool:
+        return True
+
     async def async_press(self) -> None:
-        await self.coordinator.async_request_refresh()
+        try:
+            await self.coordinator.async_refresh_status_now()
+        except Exception as exc:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="local_refresh_failed",
+            ) from exc
 
 
 class TuyaBLEReportFactoryResetButton(TuyaBLELockEntity, ButtonEntity):

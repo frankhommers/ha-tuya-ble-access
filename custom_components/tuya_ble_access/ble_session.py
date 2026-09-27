@@ -131,8 +131,12 @@ class TuyaBLELockSession:
         sec_key: bytes | None = None,
         verify_key: bytes | None = None,
         check_code: str | None = None,
+        bluetooth_source: str | None = None,
     ):
         self._hass = hass
+        self.bluetooth_source = bluetooth_source
+        self._stopped = False
+        self._connection_tasks: set[asyncio.Task] = set()
         self._ble_device = ble_device
         self._login_key = login_key
         self._virtual_id = virtual_id
@@ -436,10 +440,16 @@ class TuyaBLELockSession:
             self._dp_report_callback(all_dps)
 
     # ---------- public API ----------
+    def _connection_client_class(self):
+        if not self.bluetooth_source:
+            return BleakClient
+        from .bluetooth_route import client_for_source
+
+        return client_for_source(BleakClient, self.bluetooth_source)
+
     async def async_connect_single_attempt(self) -> bool:
         """One-shot connect: single attempt, no retries. For startup battery fetch."""
-        async with self._connect_lock:
-            return await self._async_connect_inner(max_attempts=1)
+        return await self._async_connect_tracked(1)
 
     async def async_connect(self) -> bool:
         """Connect to the lock using stored login_key (bound device reconnect).
@@ -447,8 +457,28 @@ class TuyaBLELockSession:
         Retry logic mirrors the pairing flow — device may be asleep between ads.
         Uses _connect_lock to prevent concurrent connection attempts.
         """
-        async with self._connect_lock:
-            return await self._async_connect_inner()
+        return await self._async_connect_tracked(3)
+
+    async def _async_connect_tracked(self, max_attempts: int) -> bool:
+        task = asyncio.current_task()
+        self._connection_tasks.add(task)
+        try:
+            async with self._connect_lock:
+                if self._stopped:
+                    return False
+                return await self._async_connect_inner(max_attempts=max_attempts)
+        finally:
+            self._connection_tasks.discard(task)
+
+    async def async_shutdown(self) -> None:
+        """Finish outstanding connects before a replacement session starts."""
+        self._stopped = True
+        tasks = list(self._connection_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await self.async_disconnect()
 
     async def _async_connect_inner(self, max_attempts: int = 3) -> bool:
         if self.is_connected:
@@ -466,7 +496,7 @@ class TuyaBLELockSession:
                 )
                 if fresh:
                     self._ble_device = fresh
-                # Log which BLE adapter/source will be used
+                # The advertisement source is not necessarily HA's connection route.
                 _details = getattr(self._ble_device, "details", None) or {}
                 _source = (
                     _details.get("source")
@@ -474,15 +504,16 @@ class TuyaBLELockSession:
                     else getattr(_details, "source", None)
                 )
                 _LOGGER.debug(
-                    "Reconnect attempt %d/%d for %s (source=%s, rssi=%s): connecting...",
+                    "Reconnect attempt %d/%d for %s (advertisement_source=%s, fixed_source=%s, rssi=%s): connecting...",
                     attempt + 1,
                     max_attempts,
                     self._ble_device.address,
                     _source,
+                    self.bluetooth_source,
                     getattr(self._ble_device, "rssi", "?"),
                 )
                 self._client = await establish_connection(
-                    client_class=BleakClient,
+                    client_class=self._connection_client_class(),
                     device=self._ble_device,
                     name="tuya_ble_access",
                     disconnected_callback=self._on_disconnect,
@@ -883,7 +914,7 @@ class TuyaBLELockSession:
             getattr(self._ble_device, "rssi", "?"),
         )
         self._client = await establish_connection(
-            client_class=BleakClient,
+            client_class=self._connection_client_class(),
             device=self._ble_device,
             name="tuya_ble_access",
             disconnected_callback=self._on_disconnect,
@@ -1092,7 +1123,7 @@ class TuyaBLELockSession:
             try:
                 await self.async_disconnect()
                 self._client = await establish_connection(
-                    client_class=BleakClient,
+                    client_class=self._connection_client_class(),
                     device=self._ble_device,
                     name="tuya_ble_access",
                     disconnected_callback=self._on_disconnect,
@@ -1219,7 +1250,7 @@ class TuyaBLELockSession:
                 try:
                     await self.async_disconnect()
                     self._client = await establish_connection(
-                        client_class=BleakClient,
+                        client_class=self._connection_client_class(),
                         device=self._ble_device,
                         name="tuya_ble_access",
                         disconnected_callback=self._on_disconnect,

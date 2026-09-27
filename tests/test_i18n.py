@@ -119,8 +119,11 @@ def _load_select(monkeypatch):
 
     replacements = {
         package: types.SimpleNamespace(__path__=[str(ROOT)]),
+        f"{package}.const": types.SimpleNamespace(DOMAIN="tuya_ble_access"),
         f"{package}.entity": types.SimpleNamespace(TuyaBLELockEntity=Entity),
         f"{package}.models": types.SimpleNamespace(TuyaBLELockData=object),
+        "homeassistant.components": types.SimpleNamespace(bluetooth=types.SimpleNamespace()),
+        "homeassistant.exceptions": types.SimpleNamespace(HomeAssistantError=RuntimeError),
         "homeassistant.components.select": types.SimpleNamespace(SelectEntity=type("SelectEntity", (), {})),
         "homeassistant.const": types.SimpleNamespace(EntityCategory=types.SimpleNamespace(CONFIG="config")),
         "homeassistant.helpers.restore_state": types.SimpleNamespace(RestoreEntity=type("RestoreEntity", (), {})),
@@ -157,6 +160,8 @@ def test_selects_use_protocol_values_and_restore_old_english_labels(monkeypatch)
             entry = types.SimpleNamespace(runtime_data=types.SimpleNamespace(coordinators={"MAC_A": coordinator}))
             await module.async_setup_entry(None, entry, entities.extend)
             for entity in entities:
+                if isinstance(entity, module.TuyaBLEBluetoothProxySelect):
+                    continue  # Dynamic scanner names are tested separately.
                 translated = EN["entity"]["select"][entity._attr_translation_key]["state"]
                 for index, value in enumerate(entity._attr_options):
                     assert re.fullmatch(r"[a-z0-9_]+", value)

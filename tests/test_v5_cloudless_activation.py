@@ -658,3 +658,30 @@ def test_normal_reconnect_never_sends_pair_to_unbound_or_invalid_device(monkeypa
         assert not session.is_connected
     asyncio.run(run(0))
     asyncio.run(run(2))
+
+
+def test_shutdown_cancels_running_and_queued_connections():
+    async def run():
+        _install_homeassistant_stubs()
+        _install_ble_stubs()
+        module = _load_package_module('ble_session')
+        session = module.TuyaBLELockSession(None, types.SimpleNamespace(address='lock'), b'', b'', '')
+        started = asyncio.Event()
+        cancelled = []
+        async def connecting(**kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.append(True)
+        session._async_connect_inner = connecting
+        first = asyncio.create_task(session.async_connect())
+        await started.wait()
+        second = asyncio.create_task(session.async_connect_single_attempt())
+        await asyncio.sleep(0)
+        await session.async_shutdown()
+        assert first.cancelled() and second.cancelled()
+        assert cancelled == [True]
+        assert not session._connection_tasks
+        assert await session.async_connect() is False
+    asyncio.run(run())

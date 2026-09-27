@@ -260,6 +260,12 @@
           "finger_card": "Fingerprint and card",
           "password_card": "PIN and card"
         }
+      },
+      "bluetooth_proxy": {
+        "name": "Bluetooth proxy",
+        "state": {
+          "automatic": "Automatic"
+        }
       }
     },
     "number": {
@@ -734,6 +740,15 @@
     },
     "migration_restart_required": {
       "message": "Restart Home Assistant to finish domain migration."
+    },
+    "local_refresh_failed": {
+      "message": "Could not refresh the lock over Bluetooth. Wake the lock and check the Bluetooth proxy. See the integration debug log for details."
+    },
+    "bluetooth_proxy_unavailable": {
+      "message": "The selected Bluetooth proxy is no longer available. Select a current proxy or Automatic."
+    },
+    "bluetooth_proxy_unsupported": {
+      "message": "This Home Assistant version cannot enforce a fixed Bluetooth proxy. Use Automatic."
     }
   }
 }

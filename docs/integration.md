@@ -213,3 +213,28 @@ an old HA mapping as proof that a credential still exists in the reset lock.
 - When filing an issue, include HA/integration versions, the product ID and the
   exact action/error. Review and redact logs or diagnostics before sharing
   device keys or account information.
+
+
+## Selecting a Bluetooth proxy
+
+Each configured lock has a **Bluetooth proxy** selector under Configuration.
+**Automatic** is the default and keeps Home Assistant's normal routing.
+Choose a named connectable adapter/proxy to use only that source for this lock.
+The selection is saved across restarts. Changing it closes the current connection;
+the next operation uses the selected source. No factory reset or cloud login is needed.
+
+A fixed source does **not** fall back when it is offline, cannot see the lock,
+or has no free connection slot. Select **Automatic** to restore normal routing.
+The selector remains usable while the lock is unavailable, including when a
+previously selected proxy has disappeared. This setting applies to configured
+locks, not the initial discovery/activation flow.
+
+Home Assistant normally ignores the source of the BLEDevice passed to its
+client. Fixed routing uses a per-client override of HA's protected path-selection
+hooks, preserving its connection and slot lifecycle. These hooks are checked;
+unsupported versions reject fixed routing rather than silently selecting another
+source. A future HA change may require a compatibility update.
+
+**Refresh status locally** explicitly attempts a connection even during the
+background polling cooldown and reports connection failures. It does not unlock
+the device. Wake a sleeping lock before requesting a refresh.

@@ -117,6 +117,7 @@ def coordinator(monkeypatch, store):
     c._mac, c._device_name = "A", "Lock"
     c._entry = types.SimpleNamespace(runtime_data=types.SimpleNamespace(credential_store=store))
     c.hass = types.SimpleNamespace(bus=types.SimpleNamespace(async_fire=Mock()))
+    c._stopping = False
     c._recent_event_keys = {}
     c._motor_unlock_at = 0
     c._motor_unlock_claimed = True

@@ -558,7 +558,9 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
         """Start background task that processes incoming BLE notifications."""
         if self._listener_task and not self._listener_task.done():
             return
-        self._listener_task = self.hass.async_create_task(self._notification_listener())
+        self._listener_task = self._entry.async_create_background_task(
+            self.hass, self._notification_listener(), f"tuya_ble_access_listener_{self._mac}"
+        )
 
     async def _notification_listener(self) -> None:
         """Periodically drain notification buffer while BLE is connected.
@@ -813,7 +815,9 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
             "Event flag raised for %s (service data %s), opening session",
             self._mac, payload.hex(),
         )
-        self.hass.async_create_task(self._async_collect_pending_event())
+        self._entry.async_create_background_task(
+            self.hass, self._async_collect_pending_event(), f"tuya_ble_access_event_{self._mac}"
+        )
 
     async def _async_collect_pending_event(self) -> None:
         """Open a short session so the lock can deliver its pending record.
@@ -848,6 +852,26 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(
                     "Event-flag session failed for %s: %s", self._mac, exc
                 )
+
+    async def async_set_bluetooth_source(self, source: str | None) -> None:
+        """Persist a route and close the old connection before using it."""
+        async with self._op_lock:
+            await self._session.async_disconnect()
+            await self._entry.runtime_data.device_store.async_update_device(
+                self._mac, bluetooth_source=source,
+            )
+            self._session.bluetooth_source = source
+            self._device_data["bluetooth_source"] = source
+            self._last_connect_failure = 0.0
+            self.async_update_listeners()
+
+    async def async_refresh_status_now(self) -> None:
+        """An explicit refresh bypasses polling cooldown and reports failures."""
+        async with self._op_lock:
+            await self._async_ensure_connected()
+            await self._fetch_status()
+            self._reset_idle_timer()
+            self.async_set_updated_data(self.state)
 
     async def async_one_shot_status(self) -> None:
         """Single-attempt status fetch at startup. No retries."""
@@ -891,6 +915,8 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
         return self.state
 
     async def _async_ensure_connected(self) -> None:
+        if self._stopping:
+            raise UpdateFailed("Tuya BLE Access is stopping")
         if not self._session.is_connected:
             if not await self._session.async_connect():
                 self._last_connect_failure = time.monotonic()
