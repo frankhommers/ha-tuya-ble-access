@@ -105,7 +105,7 @@ class CredentialStore:
                 return CredentialRecord(**c)
         return None
 
-    async def async_add_credential(self, member_id, lock_entry_id, cred_type, hw_id, name) -> CredentialRecord:
+    async def async_add_credential(self, member_id, lock_entry_id, cred_type, hw_id, name, *, device_policy=None) -> CredentialRecord:
         # One credential per physical slot: (lock, cred_type, hw_id) maps to a
         # single hardware slot on the lock, so re-enrolling that slot must
         # replace the old entry rather than stack a duplicate. Without this the
@@ -123,6 +123,7 @@ class CredentialStore:
             hw_id=hw_id,
             name=name,
             created_at=time.time(),
+            device_policy=device_policy,
         )
         self._data["credentials"][cid] = rec.__dict__
         await self.async_save()
@@ -318,4 +319,21 @@ class CredentialStore:
         except BaseException:
             if self._data["temp_passwords"].get(record.password_id) is updated:
                 self._data["temp_passwords"][record.password_id] = current
+            raise
+
+    async def async_set_credential_pause_state(self, record, state, requested_paused):
+        """Persist intent without resurrecting a deleted or replaced credential."""
+        current = self._data["credentials"].get(record.credential_id)
+        if current is None or any(current.get(k) != getattr(record, k) for k in
+                ("lock_entry_id", "cred_type", "hw_id", "device_policy")):
+            raise ValueError("Credential is no longer current")
+        if state not in ("active", "paused", "unknown") or type(requested_paused) is not bool:
+            raise ValueError("Invalid pause state")
+        updated = {**current, "pause_state": state, "requested_paused": requested_paused}
+        self._data["credentials"][record.credential_id] = updated
+        try:
+            await self.async_save()
+        except BaseException:
+            if self._data["credentials"].get(record.credential_id) is updated:
+                self._data["credentials"][record.credential_id] = current
             raise

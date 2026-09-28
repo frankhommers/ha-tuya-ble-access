@@ -41,6 +41,11 @@ class CredentialRecord:
     hw_id: int
     name: str
     created_at: float
+    # Exact device policy is known only after a matching enrollment response.
+    # Local HA attribution can differ from the device member; never infer it.
+    device_policy: Optional[dict[str, Any]] = None
+    pause_state: str = "active"
+    requested_paused: Optional[bool] = None
 
 
 @dataclass

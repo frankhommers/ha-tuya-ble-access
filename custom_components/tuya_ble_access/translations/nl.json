@@ -658,6 +658,34 @@
           "description": "De password_id uit create_temp_password of list_credentials."
         }
       }
+    },
+    "pause_credential": {
+      "name": "Toegangsmiddel pauzeren",
+      "description": "Pauzeer een ondersteunde vingerafdruk zonder adminrechten die via deze integratie is ingeschreven met opgeslagen oorspronkelijke instellingen. De einddatum blijft gelijk.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie van toepassing is."
+        },
+        "credential_id": {
+          "name": "ID van toegangsmiddel",
+          "description": "De credential_id uit list_credentials of de sensor Toegangsmiddelen."
+        }
+      }
+    },
+    "resume_credential": {
+      "name": "Toegangsmiddel hervatten",
+      "description": "Herstel een gepauzeerde vingerafdruk naar de opgeslagen oorspronkelijke geldigheid. Verlopen toegangsmiddelen kunnen niet worden hervat.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarop deze actie van toepassing is."
+        },
+        "credential_id": {
+          "name": "ID van toegangsmiddel",
+          "description": "De credential_id uit list_credentials of de sensor Toegangsmiddelen."
+        }
+      }
     }
   },
   "exceptions": {
@@ -786,6 +814,21 @@
     },
     "temp_password_pause_rejected": {
       "message": "Het slot heeft de wijziging geweigerd. De pauzestatus is onbekend; probeer opnieuw zodra het slot bereikbaar is."
+    },
+    "credential_not_current": {
+      "message": "Dit toegangsmiddel verwijst niet meer eenduidig naar een huidige plek op dit slot. Vernieuw de lijst."
+    },
+    "credential_pause_unsupported": {
+      "message": "Pauzeren en hervatten zijn nog niet getest voor dit type toegangsmiddel en product."
+    },
+    "credential_policy_unknown": {
+      "message": "De oorspronkelijke geldigheid en slotidentiteit zijn onbekend, of dit betreft adminrechten of beperkt gebruik. Alleen ondersteunde vingerafdrukken zonder adminrechten die met deze versie zijn ingeschreven kunnen worden gepauzeerd."
+    },
+    "credential_expired": {
+      "message": "De oorspronkelijke geldigheid is verlopen. Hervatten kan deze niet verlengen."
+    },
+    "credential_pause_unconfirmed": {
+      "message": "Het slot heeft de gevraagde wijziging voor dit toegangsmiddel niet bevestigd. De pauzestatus is onbekend; probeer opnieuw wanneer het slot bereikbaar is."
     }
   }
 }

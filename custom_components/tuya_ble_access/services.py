@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from functools import wraps
 import logging
 import re
 
@@ -20,6 +22,8 @@ from .const import (
 )
 from .credential_store import CredentialStore
 from .credential_time import CredentialTimeError, parse_credential_window
+from .credential_schedule import policy_from_enrollment
+from .credential_pause import CredentialPauseError, current_credential, async_set_credential_paused
 from .temp_password_pause import TempPasswordPauseError, async_set_paused, current_password
 from .ble_commands import (
     build_enroll_payload,
@@ -151,6 +155,12 @@ TEMP_PASSWORD_PAUSE_SCHEMA = vol.Schema({
 })
 
 
+CREDENTIAL_PAUSE_SCHEMA = vol.Schema({
+    vol.Required("device_id"): str,
+    vol.Required("credential_id"): str,
+})
+
+
 def _resolve_member_name(hass: HomeAssistant, call_data: dict) -> str:
     """Resolve person entity or member_name to a friendly name."""
     person_entity_id = call_data.get("person")
@@ -240,6 +250,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, "activate"):
         return
 
+    credential_operations = asyncio.Lock()
+
+    def serialize_credentials(handler):
+        @wraps(handler)
+        async def serialized(call):
+            async with credential_operations:
+                return await handler(call)
+        return serialized
 
     async def handle_activate(call: ServiceCall) -> dict:
         entry = service_helper.async_get_config_entry(hass, DOMAIN, None)
@@ -273,6 +291,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             "uuid": record.get("uuid", ""),
         }
 
+    @serialize_credentials
     async def handle_add_pin(call: ServiceCall) -> None:
         device_ids = call.data["device_id"]
         member_name = _resolve_member_name(hass, call.data)
@@ -323,6 +342,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             cred_type=CRED_PASSWORD,
                             hw_id=resp.get("hw_id", 0),
                             name=f"{member_name} PIN",
+                            device_policy=policy_from_enrollment(payload, dp_create, result),
                         )
                     else:
                         raise HomeAssistantError(
@@ -338,6 +358,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             finally:
                 await coordinator._session.async_disconnect()
 
+    @serialize_credentials
     async def handle_register_credential(call: ServiceCall) -> dict:
         """Associate a pre-existing lock credential slot with a HA member."""
         hw_id = call.data["hw_id"]
@@ -392,6 +413,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             "replaced": existing.name if existing else None,
         }
 
+    @serialize_credentials
     async def handle_add_fingerprint(call: ServiceCall) -> None:
         device_id = call.data["device_id"]
         member_name = _resolve_member_name(hass, call.data)
@@ -446,6 +468,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             cred_type=CRED_FINGERPRINT,
                             hw_id=resp.get("hw_id", 0),
                             name=cred_name,
+                            device_policy=policy_from_enrollment(payload, dp_create, dp),
                         )
                         _refresh_credentials_ui(hass, mac)
                         return
@@ -463,6 +486,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         finally:
             await coordinator._session.async_disconnect()
 
+    @serialize_credentials
     async def handle_add_card(call: ServiceCall) -> None:
         device_id = call.data["device_id"]
         member_name = _resolve_member_name(hass, call.data)
@@ -514,6 +538,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             cred_type=CRED_CARD,
                             hw_id=resp.get("hw_id", 0),
                             name=f"{member_name} Card",
+                            device_policy=policy_from_enrollment(payload, dp_create, dp),
                         )
                         _refresh_credentials_ui(hass, mac)
                         return
@@ -540,6 +565,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         finally:
             await coordinator._session.async_disconnect()
 
+    @serialize_credentials
     async def handle_delete_credential(call: ServiceCall) -> None:
         device_id = call.data["device_id"]
         credential_id = call.data.get("credential_id")
@@ -609,6 +635,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         finally:
             await coordinator._session.async_disconnect()
 
+    @serialize_credentials
     async def handle_create_temp_password(call: ServiceCall) -> dict:
         device_id = call.data["device_id"]
         name = call.data["name"]
@@ -716,11 +743,42 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN, translation_key=err.translation_key,
             ) from err
 
+    @serialize_credentials
     async def handle_pause_temp_password(call: ServiceCall) -> dict:
         return await handle_temp_password_pause(call, True)
 
+    @serialize_credentials
     async def handle_resume_temp_password(call: ServiceCall) -> dict:
         return await handle_temp_password_pause(call, False)
+
+    async def handle_credential_pause(call: ServiceCall, paused: bool) -> dict:
+        mac, coordinator = _get_coordinator(hass, call.data["device_id"])
+        capability = coordinator._profile.get("services", {}).get("pause_credential", {})
+        store = hass.data[DOMAIN]["credential_store"]
+        credential_id = call.data["credential_id"]
+        try:
+            async with coordinator._op_lock:
+                current_credential(store, mac, credential_id, capability)
+                try:
+                    await coordinator._async_ensure_connected()
+                    return await async_set_credential_paused(
+                        store, coordinator._session, mac, credential_id, capability, paused
+                    )
+                finally:
+                    _refresh_credentials_ui(hass, mac)
+                    await coordinator._session.async_disconnect()
+        except CredentialPauseError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key=err.translation_key,
+            ) from err
+
+    @serialize_credentials
+    async def handle_pause_credential(call: ServiceCall) -> dict:
+        return await handle_credential_pause(call, True)
+
+    @serialize_credentials
+    async def handle_resume_credential(call: ServiceCall) -> dict:
+        return await handle_credential_pause(call, False)
 
     async def handle_list_credentials(call: ServiceCall):
         device_id = call.data["device_id"]
@@ -738,6 +796,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 "type": CRED_TYPE_LABELS.get(c.cred_type, f"unknown_{c.cred_type}"),
                 "name": c.name,
                 "hw_id": c.hw_id,
+                "device_policy": c.device_policy,
+                "pause_state": c.pause_state,
+                "requested_paused": c.requested_paused,
             })
         return {"credentials": result, **store.get_temp_password_overview(mac)}
 
@@ -757,6 +818,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         schema=REGISTER_CREDENTIAL_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    @serialize_credentials
     async def handle_probe_records(call: ServiceCall) -> dict:
         """Sweep candidate history-read requests and report everything returned.
 
@@ -852,6 +914,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, "add_pin", handle_add_pin, schema=ADD_PIN_SCHEMA)
     hass.services.async_register(DOMAIN, "add_fingerprint", handle_add_fingerprint, schema=ADD_FINGERPRINT_SCHEMA)
     hass.services.async_register(DOMAIN, "add_card", handle_add_card, schema=ADD_CARD_SCHEMA)
+    @serialize_credentials
     async def handle_clear_credentials(call: ServiceCall) -> dict:
         """Empty the HA credential/attribution store.
 
@@ -873,6 +936,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         _refresh_credentials_ui(hass, mac)
         return {"removed": removed, "scope": mac or "all"}
 
+    @serialize_credentials
     async def handle_report_factory_reset(call: ServiceCall) -> dict:
         """Record a hardware reset by clearing only this lock's local records."""
         mac, _ = _get_coordinator(hass, call.data["device_id"])
@@ -885,6 +949,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
         )
         return {"mac": mac, "removed": removed}
 
+    @serialize_credentials
     async def handle_sync_credentials(call: ServiceCall) -> dict:
         """Read the lock's actual credential slots via DP54 (read-only).
 
@@ -991,6 +1056,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                     records.append(rec)
         return records, answered
 
+    @serialize_credentials
     async def handle_clear_fingerprints(call: ServiceCall) -> dict:
         """Delete fingerprints from the lock itself, then clear HA attribution.
 
@@ -1115,3 +1181,11 @@ async def async_register_services(hass: HomeAssistant) -> None:
         schema=TEMP_PASSWORD_PAUSE_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(DOMAIN, "probe_records", handle_probe_records, schema=PROBE_RECORDS_SCHEMA, supports_response=SupportsResponse.ONLY)
+    service_helper.async_register_admin_service(
+        hass, DOMAIN, "pause_credential", handle_pause_credential,
+        schema=CREDENTIAL_PAUSE_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
+    )
+    service_helper.async_register_admin_service(
+        hass, DOMAIN, "resume_credential", handle_resume_credential,
+        schema=CREDENTIAL_PAUSE_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
+    )

@@ -467,3 +467,43 @@ clear_fingerprints:
           min: 1
           max: 255
           mode: box
+
+pause_credential:
+  name: Pause credential
+  description: Pause a supported non-admin fingerprint enrolled by this integration with a recorded original policy. The original expiry stays unchanged.
+  fields:
+    device_id:
+      name: Lock device
+      description: The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    credential_id:
+      name: Credential ID
+      description: The credential_id from list_credentials or the Credentials sensor.
+      required: true
+      selector:
+        text:
+
+resume_credential:
+  name: Resume credential
+  description: Restore a paused fingerprint to its recorded original validity. Expired credentials cannot be resumed.
+  fields:
+    device_id:
+      name: Lock device
+      description: The lock this action applies to.
+      required: true
+      selector:
+        device:
+          integration: tuya_ble_access
+          entity:
+            domain: lock
+    credential_id:
+      name: Credential ID
+      description: The credential_id from list_credentials or the Credentials sensor.
+      required: true
+      selector:
+        text:

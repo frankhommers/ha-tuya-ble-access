@@ -397,6 +397,9 @@ class TuyaBLECredentialsSensor(TuyaBLELockEntity, SensorEntity):
         for c in store.get_credentials_for_lock(self._mac):
             member = members.get(c.member_id)
             registered.append({
+                "credential_id": c.credential_id,
+                "pause_state": c.pause_state,
+                "requested_paused": c.requested_paused,
                 "hw_id": c.hw_id,
                 "type": _CRED_TYPE_LABEL.get(c.cred_type, str(c.cred_type)),
                 "name": c.name,

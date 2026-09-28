@@ -82,6 +82,10 @@ def test_entity_names_and_errors_use_existing_translation_keys():
     assert pause_error_keys
     for key in pause_error_keys:
         assert not _placeholders(EN["exceptions"][key]["message"])
+    credential_tree = ast.parse((ROOT / "credential_pause.py").read_text())
+    for node in ast.walk(credential_tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "CredentialPauseError":
+            assert ast.literal_eval(node.args[0]) in EN["exceptions"]
     for path in ROOT.glob("*.py"):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
@@ -102,7 +106,7 @@ def test_entity_names_and_errors_use_existing_translation_keys():
                     assert any(
                         isinstance(handler, ast.ExceptHandler)
                         and isinstance(handler.type, ast.Name)
-                        and handler.type.id in ("CredentialTimeError", "TempPasswordPauseError")
+                        and handler.type.id in ("CredentialTimeError", "TempPasswordPauseError", "CredentialPauseError")
                         and handler.name == "err" and node in ast.walk(handler)
                         for handler in ast.walk(tree)
                     )

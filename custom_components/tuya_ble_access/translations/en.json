@@ -658,6 +658,34 @@
           "description": "The password_id returned by create_temp_password or list_credentials."
         }
       }
+    },
+    "pause_credential": {
+      "name": "Pause credential",
+      "description": "Pause a supported non-admin fingerprint enrolled by this integration with a recorded original policy. The original expiry stays unchanged.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "credential_id": {
+          "name": "Credential ID",
+          "description": "The credential_id from list_credentials or the Credentials sensor."
+        }
+      }
+    },
+    "resume_credential": {
+      "name": "Resume credential",
+      "description": "Restore a paused fingerprint to its recorded original validity. Expired credentials cannot be resumed.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this action applies to."
+        },
+        "credential_id": {
+          "name": "Credential ID",
+          "description": "The credential_id from list_credentials or the Credentials sensor."
+        }
+      }
     }
   },
   "exceptions": {
@@ -786,6 +814,21 @@
     },
     "temp_password_pause_rejected": {
       "message": "The lock rejected the change. The pause state is unknown; retry when the lock is reachable."
+    },
+    "credential_not_current": {
+      "message": "This credential no longer uniquely identifies a current slot on this lock. Refresh the credential list."
+    },
+    "credential_pause_unsupported": {
+      "message": "Pause/resume has not been verified for this credential type and product."
+    },
+    "credential_policy_unknown": {
+      "message": "Original validity and device identity are unknown, or this is admin/limited-use access. Only supported non-admin fingerprints enrolled with this version can be paused."
+    },
+    "credential_expired": {
+      "message": "The original validity has expired. Resuming cannot extend it."
+    },
+    "credential_pause_unconfirmed": {
+      "message": "The lock did not confirm the requested change for this credential. Its pause state is unknown; retry when reachable."
     }
   }
 }

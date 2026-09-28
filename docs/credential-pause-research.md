@@ -31,6 +31,51 @@ tested; ordinary PINs, cards and fingerprints are not supported by these actions
 The source-only investigation below is historical evidence leading to these
 tests, not a statement that the implemented temporary-PIN flow remains unverified.
 
+## Follow-up: ordinary PINs, cards and fingerprints (2026-09-28)
+
+Rechecked panel modules 1051 and 1063 against the current DP reference.
+DP3 supports member validity edits and individual method edits. However,
+module 1063 actually sends a device edit only for password changes, including
+the new PIN; card/fingerprint name edits are cloud metadata operations.
+Therefore that panel alone does **not** prove a zero-PIN-length DP3 update
+preserves an ordinary PIN, or that the no-weekdays pattern works for DP3.
+
+The new research helpers build separate member and individual probes. DP3's
+success byte is `ff`, unlike DP53's `00`; validation matches all identity bytes.
+A member probe requires an independently confirmed member schedule: copying
+one credential's schedule to its entire member could change other access.
+
+New HA enrollments now record the exact validity, device member, role and
+unlimited-use policy after a matching completion response. PIN digits and
+biometrics are excluded. Legacy and locally re-attributed entries remain
+unknown; HA's person attribution does not establish the device member ID.
+The completed fingerprint test below enables the fingerprint-only capability
+in version 0.3.5. Other ordinary credential types remain disabled.
+
+`python scripts/prepare_credential_pause_probe.py RESPONSE.json CREDENTIAL_ID DEVICE_ID`
+prepares an offline plan from a current `list_credentials` response. It requires
+a dedicated non-admin test credential named `Pauzetest ...`, confirmed enrollment
+policy and unexpired access. It sends nothing and includes the exact restore
+command before the pause command. Run it using the development build that saves
+the policy; v0.3.4 does not contain this follow-up metadata yet.
+
+Initially, production HA had no registered ordinary credential to test. A new
+non-admin test fingerprint was then enrolled under a dedicated test member.
+Read-only DP54 sync confirmed its slot and device member, and the user confirmed
+it opened the lock. A targeted DP3 update replaced only the recurrence with
+no enabled weekdays; the matching seven-byte response ended in `00ff` (success).
+The user confirmed rejection. Restoring the exact original enrollment validity
+returned the same matching success response, and the user confirmed that the
+same fingerprint opened again, without re-enrollment.
+
+This verifies the immediate fingerprint deny/restore cycle on this Keybox.
+Keybox restart/day rollover and effects on another enrolled credential were not
+physically tested. Cards, ordinary PINs and member-wide suspension remain
+unverified. Version 0.3.5 exposes only non-admin HA-enrolled fingerprints whose
+original policy was captured by the new code. The pre-update test fingerprint
+was restored manually using the observed enrollment workflow and DP54 identity;
+its legacy HA record is not silently upgraded to a known-policy record.
+
 ## Result from the actual product panel
 
 Retrieved the official `ba2qk177` panel **000000mtoi, version 1.5.26**, read-only

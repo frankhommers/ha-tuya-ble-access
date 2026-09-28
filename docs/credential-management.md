@@ -48,6 +48,35 @@ This applies only to temporary PINs created and tracked by this integration,
 with a confirmed, unique hardware ID. It does not suspend ordinary PINs,
 cards, fingerprints, a whole person, or mobile Bluetooth unlocking.
 
+## Pausing and resuming fingerprints
+
+Version 0.3.5 adds admin-only `tuya_ble_access.pause_credential` and
+`tuya_ble_access.resume_credential` actions for non-admin fingerprints on the
+verified K3 BLE PRO 2 (`ba2qk177`) profile. Both take `device_id` and
+`credential_id` from `list_credentials` or the Credentials sensor.
+
+```yaml
+action: tuya_ble_access.pause_credential
+data:
+  device_id: YOUR_LOCK_DEVICE_ID
+  credential_id: YOUR_FINGERPRINT_CREDENTIAL_ID
+```
+
+Use `tuya_ble_access.resume_credential` with the same fields to restore the exact
+original validity. The fingerprint stays enrolled. Pause has no automatic resume
+time and never extends the original expiry. `pause_state` reports `active`,
+`paused`, or `unknown`; an ambiguous response remains unknown and may be retried.
+Credential service operations are serialized to prevent concurrent enrollment,
+deletion, metadata replacement and pause/resume from targeting a reused slot.
+
+Only fingerprints newly enrolled with version 0.3.5 or later have the recorded
+device identity, original validity and permissions needed for safe restoration.
+Older records and manually registered slots remain unsupported; a local person
+assignment does not establish the slot's device member or policy. Updating alone
+does not migrate these missing settings. Admin and limited-use credentials are
+also excluded. Ordinary PINs, cards and whole-person suspension remain unverified
+and are not enabled by these actions.
+
 ## Adding a PIN Code
 
 PINs are the simplest credential type. The lock accepts 6-10 digit codes.

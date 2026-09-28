@@ -91,6 +91,13 @@
     "pause_temp_password": {
       "dp": 53,
       "strategy": "no_weekdays"
+    },
+    "pause_credential": {
+      "dp": 3,
+      "strategy": "no_weekdays",
+      "credential_types": [
+        3
+      ]
     }
   },
   "state_map": {

@@ -1,7 +1,7 @@
 {
   "domain": "tuya_ble_access",
   "name": "Tuya BLE Access",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "codeowners": [
     "@frankhommers"
   ],
