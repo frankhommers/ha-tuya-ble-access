@@ -76,6 +76,24 @@ original policy was captured by the new code. The pre-update test fingerprint
 was restored manually using the observed enrollment workflow and DP54 identity;
 its legacy HA record is not silently upgraded to a known-policy record.
 
+## Follow-up: card verification completed
+
+A new non-admin test card was enrolled for a separate test member. HA registration
+and a read-only DP54 query identified its exact card slot and device member.
+The user confirmed baseline access. A targeted DP3 no-weekdays update returned
+the matching seven-byte success response; the user confirmed that the card was
+rejected while the previously restored test fingerprint still opened the lock.
+The exact original validity was then restored, the device acknowledged success,
+and the user confirmed that the same card opened again.
+
+Version 0.3.6 enables cards alongside fingerprints for the verified ba2qk177
+profile. This test establishes isolation from the other test member's fingerprint
+in this direction; it does not establish behavior for every combination of
+methods/members. Reboot and day-rollover persistence remain untested. Ordinary
+PINs and member-wide suspension still require separate physical verification.
+Both test credentials are restored. Further physical testing was deferred by
+the user after moving the Keybox indoors; no reset or new pairing is needed.
+
 ## Result from the actual product panel
 
 Retrieved the official `ba2qk177` panel **000000mtoi, version 1.5.26**, read-only

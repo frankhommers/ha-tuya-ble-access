@@ -470,7 +470,7 @@ clear_fingerprints:
 
 pause_credential:
   name: Pause credential
-  description: Pause a supported non-admin fingerprint enrolled by this integration with a recorded original policy. The original expiry stays unchanged.
+  description: Pause a supported non-admin fingerprint or card enrolled by this integration with a recorded original policy. The original expiry stays unchanged.
   fields:
     device_id:
       name: Lock device
@@ -490,7 +490,7 @@ pause_credential:
 
 resume_credential:
   name: Resume credential
-  description: Restore a paused fingerprint to its recorded original validity. Expired credentials cannot be resumed.
+  description: Restore a paused fingerprint or card to its recorded original validity. Expired credentials cannot be resumed.
   fields:
     device_id:
       name: Lock device

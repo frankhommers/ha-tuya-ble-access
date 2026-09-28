@@ -12,30 +12,31 @@ from test_credential_store import _fresh_store, _load
 from test_credential_schedule import policy
 
 pause = _load('credential_pause')
-CAPABILITY = {'dp': 3, 'strategy': 'no_weekdays', 'credential_types': [3]}
+CAPABILITY = {'dp': 3, 'strategy': 'no_weekdays', 'credential_types': [2, 3]}
 
 
-async def fixture(monkeypatch):
+async def fixture(monkeypatch, kind=3):
     monkeypatch.setattr(pause.time, 'time', lambda: 1790544600)
     store = _fresh_store()
-    rec = await store.async_add_credential(7, 'MAC_A', 3, 9, 'Test finger', device_policy=policy(3))
+    rec = await store.async_add_credential(7, 'MAC_A', kind, 9, 'Test access', device_policy=policy(kind))
     session = types.SimpleNamespace(async_send_dp_raw=AsyncMock(return_value={
-        'id': 3, 'type': 0, 'raw': bytes.fromhex('030000070900ff')}))
+        'id': 3, 'type': 0, 'raw': bytes([kind, 0, 0, 7, 9, 0, 255])}))
     return store, rec, session
 
 
-def test_pause_resume_exact_policy_survives_restart(monkeypatch):
+@pytest.mark.parametrize("kind", [2, 3])
+def test_pause_resume_exact_policy_survives_restart(monkeypatch, kind):
     async def run():
-        store, rec, session = await fixture(monkeypatch)
+        store, rec, session = await fixture(monkeypatch, kind)
         original = copy.deepcopy(rec.device_policy)
         result = await pause.async_set_credential_paused(store, session, 'MAC_A', rec.credential_id, CAPABILITY, True)
         assert result['pause_state'] == 'paused'
         restarted = _fresh_store(); restarted._data = copy.deepcopy(store._data)
-        assert restarted.find_credential('MAC_A', 3, 9).pause_state == 'paused'
+        assert restarted.find_credential('MAC_A', kind, 9).pause_state == 'paused'
         await pause.async_set_credential_paused(restarted, session, 'MAC_A', rec.credential_id, CAPABILITY, False)
         assert session.async_send_dp_raw.await_args.args[1][5:22].hex() == original['validity_hex']
-        assert restarted.find_credential('MAC_A', 3, 9).device_policy == original
-        assert restarted.find_credential('MAC_A', 3, 9).pause_state == 'active'
+        assert restarted.find_credential('MAC_A', kind, 9).device_policy == original
+        assert restarted.find_credential('MAC_A', kind, 9).pause_state == 'active'
     asyncio.run(run())
 
 
@@ -95,7 +96,7 @@ def test_reset_during_write_does_not_resurrect(monkeypatch):
     asyncio.run(run())
 
 
-def test_only_verified_fingerprint_profile_enabled():
+def test_only_verified_card_and_fingerprint_profile_enabled():
     root = Path(__file__).resolve().parents[1] / 'custom_components/tuya_ble_access/device_profiles'
     enabled = {}
     for p in root.glob('*.json'):
@@ -164,4 +165,25 @@ def test_service_resume_and_failure_cleanup(monkeypatch, scenario):
             session.async_send_dp_raw.assert_not_awaited()
         assert session.async_disconnect.await_count == (0 if scenario == 'unsupported' else 1)
         assert not coord._op_lock.locked()
+    asyncio.run(run())
+
+
+def test_pausing_card_preserves_fingerprint_even_with_same_slot_number(monkeypatch):
+    async def run():
+        store, card, session = await fixture(monkeypatch, kind=2)
+        finger = await store.async_add_credential(7, 'MAC_A', 3, 9, 'Other finger', device_policy=policy(3))
+        original = copy.deepcopy(store._data['credentials'][finger.credential_id])
+        await pause.async_set_credential_paused(store, session, 'MAC_A', card.credential_id, CAPABILITY, True)
+        assert session.async_send_dp_raw.await_args.args[1][:5] == bytes([2, 0, 0, 7, 9])
+        assert store.find_credential('MAC_A', 2, 9).pause_state == 'paused'
+        assert store._data['credentials'][finger.credential_id] == original
+    asyncio.run(run())
+
+
+def test_ordinary_pin_remains_unsupported_after_card_enablement(monkeypatch):
+    async def run():
+        store, rec, session = await fixture(monkeypatch, kind=1)
+        with pytest.raises(pause.CredentialPauseError, match='credential_pause_unsupported'):
+            await pause.async_set_credential_paused(store, session, 'MAC_A', rec.credential_id, CAPABILITY, True)
+        session.async_send_dp_raw.assert_not_awaited()
     asyncio.run(run())

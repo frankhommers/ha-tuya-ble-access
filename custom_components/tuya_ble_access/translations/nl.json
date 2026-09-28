@@ -661,7 +661,7 @@
     },
     "pause_credential": {
       "name": "Toegangsmiddel pauzeren",
-      "description": "Pauzeer een ondersteunde vingerafdruk zonder adminrechten die via deze integratie is ingeschreven met opgeslagen oorspronkelijke instellingen. De einddatum blijft gelijk.",
+      "description": "Pauzeer een ondersteunde vingerafdruk of kaart zonder adminrechten die via deze integratie is ingeschreven met opgeslagen oorspronkelijke instellingen. De einddatum blijft gelijk.",
       "fields": {
         "device_id": {
           "name": "Slot",
@@ -675,7 +675,7 @@
     },
     "resume_credential": {
       "name": "Toegangsmiddel hervatten",
-      "description": "Herstel een gepauzeerde vingerafdruk naar de opgeslagen oorspronkelijke geldigheid. Verlopen toegangsmiddelen kunnen niet worden hervat.",
+      "description": "Herstel een gepauzeerde vingerafdruk of kaart naar de opgeslagen oorspronkelijke geldigheid. Verlopen toegangsmiddelen kunnen niet worden hervat.",
       "fields": {
         "device_id": {
           "name": "Slot",
@@ -822,7 +822,7 @@
       "message": "Pauzeren en hervatten zijn nog niet getest voor dit type toegangsmiddel en product."
     },
     "credential_policy_unknown": {
-      "message": "De oorspronkelijke geldigheid en slotidentiteit zijn onbekend, of dit betreft adminrechten of beperkt gebruik. Alleen ondersteunde vingerafdrukken zonder adminrechten die met deze versie zijn ingeschreven kunnen worden gepauzeerd."
+      "message": "De oorspronkelijke geldigheid en slotidentiteit zijn onbekend, of dit betreft adminrechten of beperkt gebruik. Alleen ondersteunde vingerafdrukken of kaarten zonder adminrechten met bij inschrijving opgeslagen oorspronkelijke instellingen kunnen worden gepauzeerd."
     },
     "credential_expired": {
       "message": "De oorspronkelijke geldigheid is verlopen. Hervatten kan deze niet verlengen."

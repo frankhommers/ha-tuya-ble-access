@@ -96,6 +96,7 @@
       "dp": 3,
       "strategy": "no_weekdays",
       "credential_types": [
+        2,
         3
       ]
     }

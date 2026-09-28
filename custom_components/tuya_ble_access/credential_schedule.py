@@ -1,6 +1,6 @@
-"""DP3 schedule builders; fingerprint pause/restore verified on ba2qk177.
+"""DP3 schedule builders; card/fingerprint pause/restore verified on ba2qk177.
 
-Other method types and member-wide suspension remain research candidates.
+Ordinary PINs and member-wide suspension remain research candidates.
 """
 
 import struct
