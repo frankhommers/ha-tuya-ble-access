@@ -17,6 +17,37 @@ Your lock can store multiple credential types:
 
 Each credential is associated with a **member** (a person). You can link members to Home Assistant person entities, or use standalone names.
 
+## Pausing and resuming temporary PINs
+
+On supported products, administrators can use `tuya_ble_access.pause_temp_password`
+and `tuya_ble_access.resume_temp_password` in Home Assistant's Actions tool.
+Both take `device_id` and the `password_id` returned by `create_temp_password`
+or `list_credentials`. No PIN digits or Tuya connection are needed.
+
+```yaml
+action: tuya_ble_access.pause_temp_password
+data:
+  device_id: YOUR_LOCK_DEVICE_ID
+  password_id: YOUR_TEMPORARY_PIN_ID
+```
+
+Use `tuya_ble_access.resume_temp_password` with the same fields to resume.
+Pause sends a weekly schedule with no allowed days over Bluetooth. Resume
+restores the original validity window. The end time never changes: a paused
+code can expire, and resuming cannot make an expired code valid again.
+Normal cleanup still removes expired codes on a later successful connection.
+
+The Credentials sensor and `list_credentials` include `pause_state`
+(`active`, `paused`, or `unknown`) and `requested_paused` for each temporary PIN.
+Here `active` means the original validity applies; a future start time still
+prevents access. A timeout, disconnect or restart during a write can leave its
+outcome unknown. Retry the desired action when the lock is reachable; the
+integration does not silently assume the change succeeded or queue it forever.
+
+This applies only to temporary PINs created and tracked by this integration,
+with a confirmed, unique hardware ID. It does not suspend ordinary PINs,
+cards, fingerprints, a whole person, or mobile Bluetooth unlocking.
+
 ## Adding a PIN Code
 
 PINs are the simplest credential type. The lock accepts 6-10 digit codes.

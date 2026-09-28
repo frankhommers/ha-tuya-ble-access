@@ -54,3 +54,5 @@ class TempPasswordRecord:
     hw_id: Optional[int] = None
     superseded_at: Optional[float] = None
     removed_at: Optional[float] = None
+    pause_state: str = "active"
+    requested_paused: Optional[bool] = None

@@ -221,7 +221,8 @@ class CredentialStore:
         active, expired = [], []
         for rec in self.get_temp_passwords_for_lock(lock_entry_id):
             row = {"password_id": rec.password_id, "name": rec.name, "hw_id": rec.hw_id,
-                   "effective_ts": rec.effective_ts, "expiry_ts": rec.expiry_ts}
+                   "effective_ts": rec.effective_ts, "expiry_ts": rec.expiry_ts,
+                   "pause_state": rec.pause_state, "requested_paused": rec.requested_paused}
             (expired if rec.expiry_ts <= now else active).append(row)
         archived = sum(1 for rec in self._data["temp_passwords"].values()
                        if rec["lock_entry_id"] == lock_entry_id
@@ -297,3 +298,24 @@ class CredentialStore:
     async def async_delete_temp_password(self, password_id: str) -> None:
         self._data["temp_passwords"].pop(password_id, None)
         await self.async_save()
+
+    async def async_set_temp_password_pause_state(
+        self, record: TempPasswordRecord, state: str, requested_paused: bool,
+    ) -> None:
+        """Persist intent before BLE; never resurrect removed/reused slots."""
+        current = self._data["temp_passwords"].get(record.password_id)
+        if (current is None or current.get("removed_at") is not None
+                or current.get("superseded_at") is not None
+                or current.get("hw_id") != record.hw_id
+                or current.get("lock_entry_id") != record.lock_entry_id):
+            raise ValueError("Temporary PIN is no longer current")
+        if state not in ("active", "paused", "unknown") or type(requested_paused) is not bool:
+            raise ValueError("Invalid pause state")
+        updated = {**current, "pause_state": state, "requested_paused": requested_paused}
+        self._data["temp_passwords"][record.password_id] = updated
+        try:
+            await self.async_save()
+        except BaseException:
+            if self._data["temp_passwords"].get(record.password_id) is updated:
+                self._data["temp_passwords"][record.password_id] = current
+            raise

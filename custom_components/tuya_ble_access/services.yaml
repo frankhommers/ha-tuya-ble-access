@@ -303,6 +303,43 @@ create_temp_password:
       selector:
         datetime:
 
+pause_temp_password:
+  name: Pause temporary PIN
+  description: >-
+    Block a temporary PIN until resumed or its original end time passes.
+    Requires a supported lock and a Bluetooth connection.
+  fields:
+    device_id:
+      name: Device
+      description: The lock this temporary PIN belongs to.
+      required: true
+      selector:
+        text:
+    password_id:
+      name: Temporary PIN ID
+      description: The password_id returned by create_temp_password or list_credentials.
+      required: true
+      selector:
+        text:
+
+resume_temp_password:
+  name: Resume temporary PIN
+  description: >-
+    Restore the original validity without extending the end time or recreating expired codes. Requires a Bluetooth connection.
+  fields:
+    device_id:
+      name: Device
+      description: The lock this temporary PIN belongs to.
+      required: true
+      selector:
+        text:
+    password_id:
+      name: Temporary PIN ID
+      description: The password_id returned by create_temp_password or list_credentials.
+      required: true
+      selector:
+        text:
+
 probe_records:
   name: Probe records (diagnostic)
   description: >-

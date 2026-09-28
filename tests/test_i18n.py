@@ -73,6 +73,15 @@ def test_entity_names_and_errors_use_existing_translation_keys():
     assert time_error_keys
     for key in time_error_keys:
         assert not _placeholders(EN["exceptions"][key]["message"])
+    pause_tree = ast.parse((ROOT / "temp_password_pause.py").read_text())
+    pause_error_keys = {
+        ast.literal_eval(node.args[0]) for node in ast.walk(pause_tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "TempPasswordPauseError"
+    }
+    assert pause_error_keys
+    for key in pause_error_keys:
+        assert not _placeholders(EN["exceptions"][key]["message"])
     for path in ROOT.glob("*.py"):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
@@ -93,7 +102,7 @@ def test_entity_names_and_errors_use_existing_translation_keys():
                     assert any(
                         isinstance(handler, ast.ExceptHandler)
                         and isinstance(handler.type, ast.Name)
-                        and handler.type.id == "CredentialTimeError"
+                        and handler.type.id in ("CredentialTimeError", "TempPasswordPauseError")
                         and handler.name == "err" and node in ast.walk(handler)
                         for handler in ast.walk(tree)
                     )

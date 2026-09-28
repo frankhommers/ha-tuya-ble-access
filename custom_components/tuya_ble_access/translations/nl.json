@@ -630,6 +630,34 @@
           "description": "Wis alleen deze positie. Laat leeg om alle vingerafdrukken te wissen."
         }
       }
+    },
+    "pause_temp_password": {
+      "name": "Tijdelijke pincode pauzeren",
+      "description": "Blokkeer een tijdelijke pincode totdat je hervat of de oorspronkelijke eindtijd verstrijkt. Vereist een ondersteund slot en Bluetooth-verbinding.",
+      "fields": {
+        "device_id": {
+          "name": "Apparaat",
+          "description": "Het slot waartoe deze tijdelijke pincode behoort."
+        },
+        "password_id": {
+          "name": "ID van tijdelijke pincode",
+          "description": "De password_id uit create_temp_password of list_credentials."
+        }
+      }
+    },
+    "resume_temp_password": {
+      "name": "Tijdelijke pincode hervatten",
+      "description": "Herstel de oorspronkelijke geldigheid. Verlengt de eindtijd niet en maakt verlopen codes niet opnieuw aan. Vereist een Bluetooth-verbinding.",
+      "fields": {
+        "device_id": {
+          "name": "Apparaat",
+          "description": "Het slot waartoe deze tijdelijke pincode behoort."
+        },
+        "password_id": {
+          "name": "ID van tijdelijke pincode",
+          "description": "De password_id uit create_temp_password of list_credentials."
+        }
+      }
     }
   },
   "exceptions": {
@@ -749,6 +777,15 @@
     },
     "bluetooth_proxy_unsupported": {
       "message": "Deze Home Assistant-versie kan geen vaste Bluetooth-proxy afdwingen. Gebruik Automatisch."
+    },
+    "temp_password_not_current": {
+      "message": "Deze tijdelijke pincode heeft geen uniek, actueel nummer op dit slot."
+    },
+    "temp_password_expired": {
+      "message": "Deze tijdelijke pincode is verlopen. Hervatten verlengt de geldigheid niet."
+    },
+    "temp_password_pause_rejected": {
+      "message": "Het slot heeft de wijziging geweigerd. De pauzestatus is onbekend; probeer opnieuw zodra het slot bereikbaar is."
     }
   }
 }

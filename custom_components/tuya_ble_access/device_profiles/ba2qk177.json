@@ -87,6 +87,10 @@
     },
     "remote_unlock_config": {
       "dp": 73
+    },
+    "pause_temp_password": {
+      "dp": 53,
+      "strategy": "no_weekdays"
     }
   },
   "state_map": {

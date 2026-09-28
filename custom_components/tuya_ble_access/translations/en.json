@@ -630,6 +630,34 @@
           "description": "Clear only this slot. Empty clears all fingerprints."
         }
       }
+    },
+    "pause_temp_password": {
+      "name": "Pause temporary PIN",
+      "description": "Block a temporary PIN until resumed or its original end time passes. Requires a supported lock and a Bluetooth connection.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The lock this temporary PIN belongs to."
+        },
+        "password_id": {
+          "name": "Temporary PIN ID",
+          "description": "The password_id returned by create_temp_password or list_credentials."
+        }
+      }
+    },
+    "resume_temp_password": {
+      "name": "Resume temporary PIN",
+      "description": "Restore the original validity without extending the end time or recreating expired codes. Requires a Bluetooth connection.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The lock this temporary PIN belongs to."
+        },
+        "password_id": {
+          "name": "Temporary PIN ID",
+          "description": "The password_id returned by create_temp_password or list_credentials."
+        }
+      }
     }
   },
   "exceptions": {
@@ -749,6 +777,15 @@
     },
     "bluetooth_proxy_unsupported": {
       "message": "This Home Assistant version cannot enforce a fixed Bluetooth proxy. Use Automatic."
+    },
+    "temp_password_not_current": {
+      "message": "This temporary PIN has no unique current hardware ID on this lock."
+    },
+    "temp_password_expired": {
+      "message": "This temporary PIN has expired. Resuming does not extend its validity."
+    },
+    "temp_password_pause_rejected": {
+      "message": "The lock rejected the change. The pause state is unknown; retry when the lock is reachable."
     }
   }
 }

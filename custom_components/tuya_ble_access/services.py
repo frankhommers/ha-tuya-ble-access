@@ -20,6 +20,7 @@ from .const import (
 )
 from .credential_store import CredentialStore
 from .credential_time import CredentialTimeError, parse_credential_window
+from .temp_password_pause import TempPasswordPauseError, async_set_paused, current_password
 from .ble_commands import (
     build_enroll_payload,
     build_delete_payload,
@@ -142,6 +143,11 @@ CREATE_TEMP_PASSWORD_SCHEMA = vol.Schema({
     vol.Required("pin_code"): str,
     vol.Required("effective_time"): str,
     vol.Required("expiry_time"): str,
+})
+
+TEMP_PASSWORD_PAUSE_SCHEMA = vol.Schema({
+    vol.Required("device_id"): str,
+    vol.Required("password_id"): str,
 })
 
 
@@ -680,6 +686,42 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 finally:
                     await coordinator._session.async_disconnect()
 
+    async def handle_temp_password_pause(call: ServiceCall, paused: bool) -> dict:
+        mac, coordinator = _get_coordinator(hass, call.data["device_id"])
+        capability = coordinator._profile.get("services", {}).get("pause_temp_password", {})
+        dp = capability.get("dp")
+        if dp is None or capability.get("strategy") != "no_weekdays":
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="service_unsupported",
+                translation_placeholders={"service": "pause_temp_password"},
+            )
+        store = hass.data[DOMAIN]["credential_store"]
+        password_id = call.data["password_id"]
+        try:
+            async with coordinator._op_lock:
+                # Validate before connecting; cleanup may remove expired records
+                # during connection, so async_set_paused also validates afterwards.
+                current_password(store, mac, password_id)
+                try:
+                    await coordinator._async_ensure_connected()
+                    async with coordinator._temp_password_lock:
+                        return await async_set_paused(
+                            store, coordinator._session, mac, password_id, dp, paused
+                        )
+                finally:
+                    _refresh_credentials_ui(hass, mac)
+                    await coordinator._session.async_disconnect()
+        except TempPasswordPauseError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key=err.translation_key,
+            ) from err
+
+    async def handle_pause_temp_password(call: ServiceCall) -> dict:
+        return await handle_temp_password_pause(call, True)
+
+    async def handle_resume_temp_password(call: ServiceCall) -> dict:
+        return await handle_temp_password_pause(call, False)
+
     async def handle_list_credentials(call: ServiceCall):
         device_id = call.data["device_id"]
         mac, coordinator = _get_coordinator(hass, device_id)
@@ -1064,4 +1106,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, "sync_credentials", handle_sync_credentials, schema=SYNC_CREDENTIALS_SCHEMA, supports_response=SupportsResponse.ONLY)
     hass.services.async_register(DOMAIN, "clear_fingerprints", handle_clear_fingerprints, schema=CLEAR_FINGERPRINTS_SCHEMA, supports_response=SupportsResponse.ONLY)
     hass.services.async_register(DOMAIN, "create_temp_password", handle_create_temp_password, schema=CREATE_TEMP_PASSWORD_SCHEMA, supports_response=SupportsResponse.OPTIONAL)
+    service_helper.async_register_admin_service(
+        hass, DOMAIN, "pause_temp_password", handle_pause_temp_password,
+        schema=TEMP_PASSWORD_PAUSE_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
+    )
+    service_helper.async_register_admin_service(
+        hass, DOMAIN, "resume_temp_password", handle_resume_temp_password,
+        schema=TEMP_PASSWORD_PAUSE_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(DOMAIN, "probe_records", handle_probe_records, schema=PROBE_RECORDS_SCHEMA, supports_response=SupportsResponse.ONLY)
