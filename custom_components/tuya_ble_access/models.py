@@ -46,6 +46,10 @@ class CredentialRecord:
     device_policy: Optional[dict[str, Any]] = None
     pause_state: str = "active"
     requested_paused: Optional[bool] = None
+    # Local secret, never included in entity attributes or action responses.
+    pin_code: Optional[str] = field(default=None, repr=False)
+    person_entity_id: Optional[str] = None
+    person_override: bool = False
 
 
 @dataclass
@@ -61,3 +65,4 @@ class TempPasswordRecord:
     removed_at: Optional[float] = None
     pause_state: str = "active"
     requested_paused: Optional[bool] = None
+    person_entity_id: Optional[str] = None

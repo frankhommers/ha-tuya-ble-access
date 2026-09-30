@@ -12,7 +12,7 @@ from test_credential_store import _fresh_store, _load
 from test_credential_schedule import policy
 
 pause = _load('credential_pause')
-CAPABILITY = {'dp': 3, 'strategy': 'no_weekdays', 'credential_types': [2, 3]}
+CAPABILITY = {'dp': 3, 'strategy': 'no_weekdays', 'credential_types': [1, 2, 3]}
 
 
 async def fixture(monkeypatch, kind=3):
@@ -96,7 +96,7 @@ def test_reset_during_write_does_not_resurrect(monkeypatch):
     asyncio.run(run())
 
 
-def test_only_verified_card_and_fingerprint_profile_enabled():
+def test_only_verified_individual_credential_profile_enabled():
     root = Path(__file__).resolve().parents[1] / 'custom_components/tuya_ble_access/device_profiles'
     enabled = {}
     for p in root.glob('*.json'):
@@ -180,10 +180,126 @@ def test_pausing_card_preserves_fingerprint_even_with_same_slot_number(monkeypat
     asyncio.run(run())
 
 
-def test_ordinary_pin_remains_unsupported_after_card_enablement(monkeypatch):
+@pytest.mark.parametrize('pin', [None, '', '12345', '12345678901', '１２３４５６', '12345x'])
+def test_ordinary_pin_requires_valid_digits_before_writing(monkeypatch, pin):
     async def run():
         store, rec, session = await fixture(monkeypatch, kind=1)
-        with pytest.raises(pause.CredentialPauseError, match='credential_pause_unsupported'):
-            await pause.async_set_credential_paused(store, session, 'MAC_A', rec.credential_id, CAPABILITY, True)
+        with pytest.raises(pause.CredentialPauseError, match='credential_pin_required'):
+            await pause.async_set_credential_paused(store, session, 'MAC_A', rec.credential_id, CAPABILITY, True, pin_code=pin)
+        session.async_send_dp_raw.assert_not_awaited()
+        assert store.find_credential('MAC_A', 1, 9).pause_state == 'active'
+    asyncio.run(run())
+
+
+def test_ordinary_pin_remembered_for_resume_after_restart(monkeypatch):
+    async def run():
+        store, rec, session = await fixture(monkeypatch, kind=1)
+        pin = '001234'
+        original_policy = copy.deepcopy(rec.device_policy)
+        for paused in [True, False]:
+            result = await pause.async_set_credential_paused(
+                store, session, 'MAC_A', rec.credential_id, CAPABILITY, paused,
+                pin_code=pin if paused else None)
+            assert result['pause_state'] == ('paused' if paused else 'active')
+            payload = session.async_send_dp_raw.await_args.args[1]
+            assert payload[:5] == bytes([1, 0, 0, 7, 9])
+            assert payload[22:] == bytes([0, 6, 0, 0, 1, 2, 3, 4])
+            assert store.find_credential('MAC_A', 1, 9).pin_code == pin
+            assert pin not in repr(store.find_credential('MAC_A', 1, 9))
+            assert pin not in json.dumps(result)
+            assert store.find_credential('MAC_A', 1, 9).device_policy == original_policy
+            restarted = _fresh_store(); restarted._data = copy.deepcopy(store._data)
+            store = restarted
+        assert payload[5:22].hex() == original_policy['validity_hex']
+    asyncio.run(run())
+
+
+def test_remembered_pin_cannot_be_replaced_by_pause(monkeypatch):
+    async def run():
+        store, rec, session = await fixture(monkeypatch, kind=1)
+        store._data['credentials'][rec.credential_id]['pin_code'] = '001234'
+        with pytest.raises(pause.CredentialPauseError, match='credential_pin_mismatch'):
+            await pause.async_set_credential_paused(
+                store, session, 'MAC_A', rec.credential_id, CAPABILITY, True, pin_code='001235')
+        session.async_send_dp_raw.assert_not_awaited()
+        assert store.find_credential('MAC_A', 1, 9).pin_code == '001234'
+    asyncio.run(run())
+
+
+def test_pin_saved_before_uncertain_device_outcome(monkeypatch):
+    async def run():
+        store, rec, session = await fixture(monkeypatch, kind=1)
+        session.async_send_dp_raw.side_effect = TimeoutError()
+        with pytest.raises(TimeoutError):
+            await pause.async_set_credential_paused(
+                store, session, 'MAC_A', rec.credential_id, CAPABILITY, True, pin_code='001234')
+        assert store.find_credential('MAC_A', 1, 9).pin_code == '001234'
+        assert store.find_credential('MAC_A', 1, 9).pause_state == 'unknown'
+        session.async_send_dp_raw.side_effect = None
+        await pause.async_set_credential_paused(
+            store, session, 'MAC_A', rec.credential_id, CAPABILITY, False)
+        assert store.find_credential('MAC_A', 1, 9).pause_state == 'active'
+    asyncio.run(run())
+
+
+def test_pin_failure_response_stays_unknown(monkeypatch):
+    async def run():
+        store, rec, session = await fixture(monkeypatch, kind=1)
+        session.async_send_dp_raw.return_value['raw'] = bytes.fromhex('01000007090000')
+        with pytest.raises(pause.CredentialPauseError, match='credential_pause_unconfirmed'):
+            await pause.async_set_credential_paused(
+                store, session, 'MAC_A', rec.credential_id, CAPABILITY, True, pin_code='001234')
+        assert store.find_credential('MAC_A', 1, 9).pause_state == 'unknown'
+    asyncio.run(run())
+
+
+def test_pin_services_remember_enrollment_and_hide_digits(monkeypatch):
+    from test_activation_entrypoints import FakeServiceHass, _entry, services
+    commands = _load('ble_commands')
+    monkeypatch.setattr(services, 'build_enroll_payload', commands.build_enroll_payload)
+    monkeypatch.setattr(services, 'parse_enroll_response', commands.parse_enroll_response)
+    async def run():
+        store = _fresh_store()
+        session = types.SimpleNamespace(async_disconnect=AsyncMock(), async_send_dp_raw=AsyncMock())
+        session.async_send_dp_raw.return_value = {'id':1, 'type':0, 'raw':bytes.fromhex('01ff0001030000')}
+        coord = types.SimpleNamespace(_profile={'services':{'add_pin':{'dp':1}, 'pause_credential':CAPABILITY}},
+            _op_lock=asyncio.Lock(), _async_ensure_connected=AsyncMock(), _session=session,
+            async_update_listeners=Mock())
+        coord.profile = coord._profile
+        entry = _entry(); entry.runtime_data = types.SimpleNamespace(coordinators={'MAC_A':coord})
+        hass = FakeServiceHass([entry]); hass.data = {'tuya_ble_access':{'credential_store':store}}
+        await services.async_register_services(hass)
+        add = hass.services.registration('tuya_ble_access','add_pin')[2]
+        await add(types.SimpleNamespace(data={'device_id':'MAC_A','member_name':'Test', 'pin_code':'001234'}))
+        rec = store.get_credentials_for_lock('MAC_A')[0]
+        assert rec.pin_code == '001234' and rec.device_policy is not None
+        session.async_send_dp_raw.return_value = {'id':3,'type':0,'raw':bytes.fromhex('010000010300ff')}
+        for action, expected in [('pause_credential','paused'),('resume_credential','active')]:
+            result = await hass.services.registration('tuya_ble_access',action)[2](
+                types.SimpleNamespace(data={'device_id':'MAC_A','credential_id':rec.credential_id}))
+            assert result['pause_state'] == expected
+            assert '001234' not in json.dumps(result)
+        overview = await hass.services.registration('tuya_ble_access','list_credentials')[2](
+            types.SimpleNamespace(data={'device_id':'MAC_A'}))
+        assert overview['credentials'][0]['pin_remembered'] is True
+        assert '001234' not in json.dumps(overview)
+        assert 'pin_code' not in overview['credentials'][0]
+    asyncio.run(run())
+
+
+def test_missing_pin_rejected_before_bluetooth_connection(monkeypatch):
+    from test_activation_entrypoints import FakeServiceHass, ServiceHomeAssistantError, _entry, services
+    async def run():
+        store, rec, session = await fixture(monkeypatch, kind=1)
+        session.async_disconnect = AsyncMock()
+        coord = types.SimpleNamespace(_profile={'services':{'pause_credential':CAPABILITY}},
+            _op_lock=asyncio.Lock(), _async_ensure_connected=AsyncMock(), _session=session)
+        entry = _entry(); entry.runtime_data = types.SimpleNamespace(coordinators={'MAC_A':coord})
+        hass = FakeServiceHass([entry]); hass.data = {'tuya_ble_access':{'credential_store':store}}
+        await services.async_register_services(hass)
+        with pytest.raises(ServiceHomeAssistantError):
+            await hass.services.registration('tuya_ble_access','pause_credential')[2](
+                types.SimpleNamespace(data={'device_id':'MAC_A','credential_id':rec.credential_id}))
+        coord._async_ensure_connected.assert_not_awaited()
         session.async_send_dp_raw.assert_not_awaited()
     asyncio.run(run())

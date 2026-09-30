@@ -28,10 +28,14 @@ activate:
 
 add_pin:
   name: Add PIN code
-  description: >
-    Enroll a PIN code on one or more Tuya BLE locks for a specific member.
-    The PIN will be stored in the lock's memory and associated with the member.
+  description: Enroll a PIN code on a Tuya BLE lock for a specific member. Home Assistant remembers the code locally for later pause and resume.
   fields:
+    name:
+      name: Label
+      description: Optional label for this access, independent of its person.
+      required: false
+      selector:
+        text:
     device_id:
       name: Lock device
       description: The lock device(s) to add the PIN to.
@@ -68,6 +72,12 @@ add_fingerprint:
     Begin fingerprint enrollment on a Tuya BLE lock. The user must place their
     finger on the sensor 6 times when prompted. This is a long-running operation.
   fields:
+    name:
+      name: Label
+      description: Optional label for this access, independent of its person.
+      required: false
+      selector:
+        text:
     device_id:
       name: Lock device
       description: >
@@ -177,6 +187,12 @@ add_card:
     Begin NFC/RFID card enrollment on a Tuya BLE lock. Tap the card on the
     sensor when prompted.
   fields:
+    name:
+      name: Label
+      description: Optional label for this access, independent of its person.
+      required: false
+      selector:
+        text:
     device_id:
       name: Lock device
       description: >
@@ -264,6 +280,13 @@ create_temp_password:
   description: >
     Create a time-limited temporary password on the lock (DP 51).
   fields:
+    person:
+      name: Person
+      description: Optional HA person associated with this temporary PIN.
+      required: false
+      selector:
+        entity:
+          domain: person
     device_id:
       name: Lock device
       description: >
@@ -470,7 +493,7 @@ clear_fingerprints:
 
 pause_credential:
   name: Pause credential
-  description: Pause a supported non-admin fingerprint or card enrolled by this integration with a recorded original policy. The original expiry stays unchanged.
+  description: Pause a supported non-admin PIN, fingerprint or card with an original policy recorded at enrollment. The original expiry stays unchanged.
   fields:
     device_id:
       name: Lock device
@@ -487,10 +510,17 @@ pause_credential:
       required: true
       selector:
         text:
+    pin_code:
+      name: Existing PIN
+      description: Only for ordinary PINs not yet remembered by HA. Enter the same 6–10 digit code once; HA remembers it locally for pause and resume. A different code would change the code on the lock.
+      required: false
+      selector:
+        text:
+          type: password
 
 resume_credential:
   name: Resume credential
-  description: Restore a paused fingerprint or card to its recorded original validity. Expired credentials cannot be resumed.
+  description: Restore a paused PIN, fingerprint or card to its recorded original validity. Expired credentials cannot be resumed.
   fields:
     device_id:
       name: Lock device
@@ -507,3 +537,51 @@ resume_credential:
       required: true
       selector:
         text:
+    pin_code:
+      name: Existing PIN
+      description: Only for ordinary PINs not yet remembered by HA. Enter the same 6–10 digit code once; HA remembers it locally for pause and resume. A different code would change the code on the lock.
+      required: false
+      selector:
+        text:
+          type: password
+
+list_access:
+  name: List access
+  description: Return the access manager list without PIN digits or protocol properties.
+  fields:
+    device_id:
+      name: Lock device
+      description: Optional lock device ID or address. Defaults to the first configured
+        lock.
+      required: false
+      selector:
+        text:
+update_access:
+  name: Edit access details
+  description: Edit the label and person without changing the credential on the lock.
+  fields:
+    device_id:
+      name: Lock device
+      description: The lock this access belongs to.
+      required: true
+      selector:
+        text:
+    access_id:
+      name: Access ID
+      description: The id returned by list_access.
+      required: true
+      selector:
+        text:
+    name:
+      name: Label
+      description: A label for this access, independent of its person.
+      required: false
+      selector:
+        text:
+    person:
+      name: Person
+      description: Optional HA person. An empty value removes the person association.
+      required: false
+      selector:
+        entity:
+          domain: person

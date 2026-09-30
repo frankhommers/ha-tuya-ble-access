@@ -2,6 +2,30 @@
 
 This guide explains how to enroll and manage PINs, fingerprints, NFC cards, and temporary passwords on your Tuya BLE lock through Home Assistant.
 
+## Access manager
+
+Open **Tuya BLE Access** in the Home Assistant sidebar as an administrator.
+Choose a lock to see one list with label, person, type, status and validity.
+Pincodes and technical protocol properties are not returned to this page.
+
+- **Add access** enrolls an ordinary/temporary PIN, card or fingerprint. A label
+  and a person can be supplied independently; omitted labels get a readable default.
+- **Edit** changes only the label and person. Clearing the person detaches that
+  credential without changing others belonging to the same device member.
+- **Pause / Resume** act directly from the row and refresh after the lock replies.
+  Uncertain outcomes remain visible and offer both retry choices.
+- **Delete** asks for confirmation and is available for ordinary credentials with
+  known non-admin device policy. HA keeps the record until the lock confirms.
+  Older unknown-policy registrations cannot be safely deleted by this new action.
+
+The list includes retained expired/archived temporary entries with their status.
+There is no item-hiding feature. Unknown validity remains explicitly unknown;
+HA never manufactures it from the linked person or label.
+
+The admin actions `list_access` and `update_access` back the manager. Existing
+`list_credentials` diagnostic fields remain available for compatibility.
+
+
 All credential operations are performed via **HA service calls** and work entirely over local Bluetooth — no cloud needed.
 
 ## Overview
@@ -48,12 +72,33 @@ This applies only to temporary PINs created and tracked by this integration,
 with a confirmed, unique hardware ID. It does not suspend ordinary PINs,
 cards, fingerprints, a whole person, or mobile Bluetooth unlocking.
 
-## Pausing and resuming fingerprints and cards
+## Pausing and resuming ordinary credentials
 
 Version 0.3.5 adds admin-only `tuya_ble_access.pause_credential` and
 `tuya_ble_access.resume_credential` actions for non-admin fingerprints (0.3.5+) and cards (0.3.6+) on the
 verified K3 BLE PRO 2 (`ba2qk177`) profile. Both take `device_id` and
 `credential_id` from `list_credentials` or the Credentials sensor.
+
+Version 0.4.0 also supports ordinary PINs on this profile. Their
+DP3 schedule update must include the PIN digits: a zero-length PIN update was
+rejected in the physical test, while the same update with the original PIN
+successfully paused and resumed access.
+
+New ordinary PIN enrollments remember the code automatically in HA's private
+local credential storage. For a previously enrolled PIN with known policy,
+provide its **existing** code once in `pin_code` on pause or resume. Subsequent
+calls omit that field. A supplied code that differs from a remembered code is
+rejected before Bluetooth communication. Where no code was remembered, HA
+cannot verify the entered digits: supplying different digits would replace the
+code on the lock. PIN content is saved before sending the schedule change so
+resume remains possible after a timeout or restart.
+
+The `pin_remembered` flag indicates whether this input is needed. The digits
+are excluded from action responses, entity attributes and record representations.
+The local storage file contains the code, uses private filesystem permissions
+and atomic writes, and may be included in HA backups; it is not separately
+encrypted by this integration. Ordinary PINs are forgotten when their local
+record is deleted, replaced or cleared after a reported factory reset.
 
 ```yaml
 action: tuya_ble_access.pause_credential
@@ -63,19 +108,19 @@ data:
 ```
 
 Use `tuya_ble_access.resume_credential` with the same fields to restore the exact
-original validity. The fingerprint or card stays enrolled. Pause has no automatic resume
+original validity. The PIN, fingerprint or card stays enrolled. Pause has no automatic resume
 time and never extends the original expiry. `pause_state` reports `active`,
 `paused`, or `unknown`; an ambiguous response remains unknown and may be retried.
 Credential service operations are serialized to prevent concurrent enrollment,
 deletion, metadata replacement and pause/resume from targeting a reused slot.
 
-Only fingerprints and cards newly enrolled with version 0.3.5 or later have the recorded
+Only credentials newly enrolled with version 0.3.5 or later have the recorded
 device identity, original validity and permissions needed for safe restoration.
 Older records and manually registered slots remain unsupported; a local person
 assignment does not establish the slot's device member or policy. Updating alone
 does not migrate these missing settings. Admin and limited-use credentials are
-also excluded. Ordinary PINs and whole-person suspension remain unverified
-and are not enabled by these actions.
+also excluded. Whole-person suspension remains unverified and is not enabled
+by these actions.
 
 ## Adding a PIN Code
 

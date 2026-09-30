@@ -1,5 +1,6 @@
 """Pause a verified credential while retaining its exact enrollment policy."""
 
+import re
 import time
 
 from .credential_schedule import build_schedule_probe, schedule_probe_succeeded
@@ -32,11 +33,38 @@ def current_credential(store, lock_id, credential_id, capability):
     return rec
 
 
-async def async_set_credential_paused(store, session, lock_id, credential_id, capability, paused):
+def credential_pause_pin(rec, pin_code=None):
+    """Use a remembered PIN; supplied digits must not silently replace it."""
+    if rec.cred_type == 1:
+        if pin_code in (None, ""):
+            pin_code = rec.pin_code
+        if not isinstance(pin_code, str) or not re.fullmatch(r"[0-9]{6,10}", pin_code):
+            raise CredentialPauseError("credential_pin_required")
+        if rec.pin_code is not None and pin_code != rec.pin_code:
+            raise CredentialPauseError("credential_pin_mismatch")
+        return pin_code
+    elif pin_code not in (None, ""):
+        raise CredentialPauseError("credential_pin_not_applicable")
+    return None
+
+
+def credential_pause_payload(rec, paused, pin_code=None):
+    """Validate PIN input before connecting or changing stored state."""
+    return build_schedule_probe(
+        rec.device_policy, paused=paused, pin_code=credential_pause_pin(rec, pin_code)
+    )
+
+
+async def async_set_credential_paused(
+    store, session, lock_id, credential_id, capability, paused, *, pin_code=None
+):
     """Caller serializes credential services and holds coordinator operation lock."""
     rec = current_credential(store, lock_id, credential_id, capability)
-    payload = build_schedule_probe(rec.device_policy, paused=paused)
-    await store.async_set_credential_pause_state(rec, "unknown", paused)
+    payload = credential_pause_payload(rec, paused, pin_code)
+    # Remember before BLE so a timeout/restart can still be recovered by resume.
+    await store.async_set_credential_pause_state(
+        rec, "unknown", paused, pin_code=credential_pause_pin(rec, pin_code)
+    )
     fresh = current_credential(store, lock_id, credential_id, capability)
     if fresh.device_policy != rec.device_policy:
         raise CredentialPauseError("credential_not_current")

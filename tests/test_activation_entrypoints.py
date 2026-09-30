@@ -2450,7 +2450,7 @@ def test_activate_service_registers_schema_and_response_once():
             if item[0:2] == ("tuya_ble_access", "activate")
         ]
         assert len(activate_registrations) == 1
-        assert len(hass.services.registrations) == 17
+        assert len(hass.services.registrations) == 19
 
     asyncio.run(run_test())
 

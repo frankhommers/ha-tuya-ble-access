@@ -64,6 +64,21 @@ def _fresh_store():
 FP = 3  # CRED_FINGERPRINT
 
 
+def test_pin_replacement_and_reset_do_not_reuse_secrets():
+    async def run():
+        store = _fresh_store()
+        first = await store.async_add_credential(1, 'MAC_A', 1, 3, 'First', pin_code='001234')
+        assert first.pin_code == '001234' and '001234' not in repr(first)
+        other = await store.async_add_credential(1, 'MAC_B', 1, 3, 'Other', pin_code='001235')
+        replacement = await store.async_add_credential(1, 'MAC_A', 1, 3, 'Replacement')
+        assert replacement.pin_code is None
+        assert first.credential_id not in store._data['credentials']
+        await store.async_report_factory_reset('MAC_A')
+        assert store.find_credential('MAC_B', 1, 3).pin_code == other.pin_code
+        assert not store.get_credentials_for_lock('MAC_A')
+    asyncio.run(run())
+
+
 def test_reenrolling_same_slot_replaces_not_duplicates():
     async def run():
         store = _fresh_store()

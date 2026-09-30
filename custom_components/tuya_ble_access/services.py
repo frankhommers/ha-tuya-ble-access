@@ -23,7 +23,10 @@ from .const import (
 from .credential_store import CredentialStore
 from .credential_time import CredentialTimeError, parse_credential_window
 from .credential_schedule import policy_from_enrollment
-from .credential_pause import CredentialPauseError, current_credential, async_set_credential_paused
+from .credential_pause import (
+    CredentialPauseError, current_credential, credential_pause_payload, async_set_credential_paused,
+)
+from .access_view import access_items
 from .temp_password_pause import TempPasswordPauseError, async_set_paused, current_password
 from .ble_commands import (
     build_enroll_payload,
@@ -74,6 +77,7 @@ ADD_PIN_SCHEMA = vol.Schema({
     vol.Required("device_id"): str,
     vol.Optional("person"): vol.Any(str, None),
     vol.Optional("member_name"): vol.Any(str, None),
+    vol.Optional("name"): str,
     vol.Required("pin_code"): str,
     vol.Optional("admin", default=False): bool,
 })
@@ -82,6 +86,7 @@ ADD_FINGERPRINT_SCHEMA = vol.Schema({
     vol.Required("device_id"): str,
     vol.Optional("person"): vol.Any(str, None),
     vol.Optional("member_name"): vol.Any(str, None),
+    vol.Optional("name"): str,
     vol.Optional("finger"): vol.Any(str, None),
     vol.Optional("admin", default=False): bool,
 })
@@ -90,6 +95,7 @@ ADD_CARD_SCHEMA = vol.Schema({
     vol.Required("device_id"): str,
     vol.Optional("person"): vol.Any(str, None),
     vol.Optional("member_name"): vol.Any(str, None),
+    vol.Optional("name"): str,
     vol.Optional("admin", default=False): bool,
 })
 
@@ -144,6 +150,7 @@ PROBE_RECORDS_SCHEMA = vol.Schema({
 CREATE_TEMP_PASSWORD_SCHEMA = vol.Schema({
     vol.Required("device_id"): str,
     vol.Required("name"): str,
+    vol.Optional("person"): vol.Any(str, None),
     vol.Required("pin_code"): str,
     vol.Required("effective_time"): str,
     vol.Required("expiry_time"): str,
@@ -158,6 +165,15 @@ TEMP_PASSWORD_PAUSE_SCHEMA = vol.Schema({
 CREDENTIAL_PAUSE_SCHEMA = vol.Schema({
     vol.Required("device_id"): str,
     vol.Required("credential_id"): str,
+    vol.Optional("pin_code"): str,
+})
+
+LIST_ACCESS_SCHEMA = vol.Schema({vol.Optional("device_id"): str})
+UPDATE_ACCESS_SCHEMA = vol.Schema({
+    vol.Required("device_id"): str,
+    vol.Required("access_id"): str,
+    vol.Optional("name"): str,
+    vol.Optional("person"): vol.Any(str, None),
 })
 
 
@@ -341,8 +357,10 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             lock_entry_id=mac,
                             cred_type=CRED_PASSWORD,
                             hw_id=resp.get("hw_id", 0),
-                            name=f"{member_name} PIN",
+                            name=(call.data.get("name") or "").strip() or f"{member_name} PIN",
                             device_policy=policy_from_enrollment(payload, dp_create, result),
+                            pin_code=pin_code,
+                            person_entity_id=person_eid, person_override=True,
                         )
                     else:
                         raise HomeAssistantError(
@@ -467,7 +485,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             lock_entry_id=mac,
                             cred_type=CRED_FINGERPRINT,
                             hw_id=resp.get("hw_id", 0),
-                            name=cred_name,
+                            name=(call.data.get("name") or "").strip() or cred_name,
+                            person_entity_id=person_eid, person_override=True,
                             device_policy=policy_from_enrollment(payload, dp_create, dp),
                         )
                         _refresh_credentials_ui(hass, mac)
@@ -537,7 +556,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             lock_entry_id=mac,
                             cred_type=CRED_CARD,
                             hw_id=resp.get("hw_id", 0),
-                            name=f"{member_name} Card",
+                            name=(call.data.get("name") or "").strip() or f"{member_name} Card",
+                            person_entity_id=person_eid, person_override=True,
                             device_policy=policy_from_enrollment(payload, dp_create, dp),
                         )
                         _refresh_credentials_ui(hass, mac)
@@ -582,7 +602,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
 
         if credential_id:
             cred_data = store._data["credentials"].get(credential_id)
-            if not cred_data:
+            if not cred_data or cred_data["lock_entry_id"] != mac:
                 raise HomeAssistantError(
                     translation_domain=DOMAIN,
                     translation_key="credential_not_found",
@@ -621,15 +641,22 @@ async def async_register_services(hass: HomeAssistant) -> None:
             await coordinator._async_ensure_connected()
 
             for cid, cred_data in creds_to_delete:
+                policy = cred_data.get("device_policy")
+                if (not policy or policy.get("cred_type") != cred_data["cred_type"]
+                        or policy.get("hw_id") != cred_data["hw_id"] or policy.get("admin") is not False):
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="credential_policy_unknown")
                 delete_payload = build_delete_payload(
                     cred_type=cred_data["cred_type"],
-                    member_id=cred_data["member_id"],
+                    member_id=policy["member_id"],
                     hw_id=cred_data["hw_id"],
                 )
                 result = await coordinator._session.async_send_dp_raw(
                     dp_delete, delete_payload
                 )
-                _LOGGER.info("Delete credential %s result: %s", cred_data.get("name", cid), result)
+                if (not isinstance(result, dict) or result.get("id") != dp_delete
+                        or result.get("type") != 0
+                        or result.get("raw") != delete_payload + b"\xff"):
+                    raise HomeAssistantError(translation_domain=DOMAIN, translation_key="credential_delete_unconfirmed")
                 await store.async_delete_credential(cid)
             _refresh_credentials_ui(hass, mac)
         finally:
@@ -706,6 +733,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                     rec = await store.async_add_temp_password(
                         lock_entry_id=mac, name=name, effective=eff_ts, expiry=exp_ts,
                         hw_id=response["hw_id"],
+                        person_entity_id=call.data.get("person"),
                     )
                     _refresh_credentials_ui(hass, mac)
                     return {"password_id": rec.password_id, "name": rec.name,
@@ -756,13 +784,16 @@ async def async_register_services(hass: HomeAssistant) -> None:
         capability = coordinator._profile.get("services", {}).get("pause_credential", {})
         store = hass.data[DOMAIN]["credential_store"]
         credential_id = call.data["credential_id"]
+        pin_code = call.data.get("pin_code")
         try:
             async with coordinator._op_lock:
-                current_credential(store, mac, credential_id, capability)
+                rec = current_credential(store, mac, credential_id, capability)
+                credential_pause_payload(rec, paused, pin_code)
                 try:
                     await coordinator._async_ensure_connected()
                     return await async_set_credential_paused(
-                        store, coordinator._session, mac, credential_id, capability, paused
+                        store, coordinator._session, mac, credential_id, capability, paused,
+                        pin_code=pin_code,
                     )
                 finally:
                     _refresh_credentials_ui(hass, mac)
@@ -799,8 +830,37 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 "device_policy": c.device_policy,
                 "pause_state": c.pause_state,
                 "requested_paused": c.requested_paused,
+                "pin_remembered": c.pin_code is not None,
+                "person": store.credential_person(c),
             })
         return {"credentials": result, **store.get_temp_password_overview(mac)}
+
+    async def handle_list_access(call: ServiceCall):
+        locks = []
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            for mac, coord in getattr(getattr(entry, "runtime_data", None), "coordinators", {}).items():
+                locks.append({"id": mac, "name": coord.device_name})
+        if not locks:
+            return {"locks": [], "items": [], "device_id": None}
+        store = hass.data[DOMAIN]["credential_store"]
+        mac, coord = _get_coordinator(hass, call.data.get("device_id") or locks[0]["id"])
+        return {"locks": locks, "device_id": mac,
+                "items": access_items(store, mac, coord._profile or {})}
+
+    @serialize_credentials
+    async def handle_update_access(call: ServiceCall):
+        mac, _coord = _get_coordinator(hass, call.data["device_id"])
+        changes = {k: call.data[k] for k in ("name", "person") if k in call.data}
+        person = changes.get("person")
+        if (("name" in changes and not 1 <= len(changes["name"].strip()) <= 100)
+                or (person and (not person.startswith("person.") or hass.states.get(person) is None))):
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="access_metadata_invalid")
+        try:
+            await hass.data[DOMAIN]["credential_store"].async_update_access(mac, call.data["access_id"], changes)
+        except KeyError:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="credential_not_current") from None
+        _refresh_credentials_ui(hass, mac)
+        return {"access_id": call.data["access_id"]}
 
     service_helper.async_register_admin_service(
         hass,
@@ -975,27 +1035,18 @@ async def async_register_services(hass: HomeAssistant) -> None:
             "card": CRED_CARD,
         }
         result: dict[str, list] = {}
-        errors: dict[str, str] = {}
         try:
-            # The lock drops the link between queries, so reconnect per type and
-            # keep going if one type fails instead of losing the whole sync.
+            # A one-byte PIN query omitted a live PIN on ba2qk177. The same
+            # full marker used before enrollment returns all three methods.
+            await coordinator._async_ensure_connected()
+            dps = await coordinator._session.async_send_dp_raw_long(
+                dp_sync, SYNC_MARKER, timeout=8.0
+            )
+            reports = [d for d in dps if d["id"] == dp_sync and d["type"] == 0]
+            if not reports:
+                raise HomeAssistantError(translation_domain=DOMAIN, translation_key="sync_unconfirmed")
+            records = [rec for d in reports for rec in parse_credential_list(d["raw"])]
             for name, ctype in types.items():
-                try:
-                    await coordinator._async_ensure_connected()
-                    dps = await coordinator._session.async_send_dp_raw_long(
-                        dp_sync, bytes([ctype]), timeout=8.0
-                    )
-                except Exception as exc:
-                    _LOGGER.warning("Sync %s on %s failed: %s", name, mac, exc)
-                    errors[name] = str(exc)
-                    continue
-                # The lock answers with a record list plus a short summary
-                # frame; accumulate over every DP54 frame instead of keeping
-                # only the last, which would drop the actual list.
-                records: list[dict] = []
-                for d in dps:
-                    if d["id"] == dp_sync and d["type"] == 0:
-                        records.extend(parse_credential_list(d["raw"]))
                 entries = []
                 seen: set[int] = set()
                 for rec in records:
@@ -1017,17 +1068,9 @@ async def async_register_services(hass: HomeAssistant) -> None:
                 )
         finally:
             await coordinator._session.async_disconnect()
-        if not result and errors:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="sync_failed",
-                translation_placeholders={'details': "; ".join(f"{k}: {v}" for k, v in errors.items())},
-            )
         coordinator.last_credential_sync = result
         _refresh_credentials_ui(hass, mac)
         out = {"mac": mac, "credentials": result}
-        if errors:
-            out["errors"] = errors
         return out
 
     async def _async_read_fingerprint_records(
@@ -1161,7 +1204,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
             "failed": failed,
         }
 
-    hass.services.async_register(DOMAIN, "delete_credential", handle_delete_credential, schema=DELETE_CREDENTIAL_SCHEMA)
+    service_helper.async_register_admin_service(hass, DOMAIN, "delete_credential", handle_delete_credential, schema=DELETE_CREDENTIAL_SCHEMA)
     hass.services.async_register(DOMAIN, "list_credentials", handle_list_credentials, schema=LIST_CREDENTIALS_SCHEMA, supports_response=SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, "clear_credentials", handle_clear_credentials, schema=CLEAR_CREDENTIALS_SCHEMA, supports_response=SupportsResponse.OPTIONAL)
     service_helper.async_register_admin_service(
@@ -1188,4 +1231,12 @@ async def async_register_services(hass: HomeAssistant) -> None:
     service_helper.async_register_admin_service(
         hass, DOMAIN, "resume_credential", handle_resume_credential,
         schema=CREDENTIAL_PAUSE_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
+    )
+    service_helper.async_register_admin_service(
+        hass, DOMAIN, "list_access", handle_list_access,
+        schema=LIST_ACCESS_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
+    )
+    service_helper.async_register_admin_service(
+        hass, DOMAIN, "update_access", handle_update_access,
+        schema=UPDATE_ACCESS_SCHEMA, supports_response=SupportsResponse.OPTIONAL,
     )

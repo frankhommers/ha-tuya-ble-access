@@ -417,7 +417,7 @@
     },
     "add_pin": {
       "name": "Pincode toevoegen",
-      "description": "Leer een pincode in op een of meer Tuya BLE-sloten voor een bepaalde persoon. De pincode wordt in het slot opgeslagen en aan de persoon gekoppeld.",
+      "description": "Schrijf een pincode in op een Tuya BLE-slot voor een persoon. Home Assistant onthoudt de code lokaal voor later pauzeren en hervatten.",
       "fields": {
         "device_id": {
           "name": "Slot",
@@ -434,6 +434,10 @@
         "admin": {
           "name": "Beheerderstoegang",
           "description": "Of dit toegangsmiddel beheerdersrechten krijgt."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Optioneel label voor deze toegang, onafhankelijk van de persoon."
         }
       }
     },
@@ -456,6 +460,10 @@
         "admin": {
           "name": "Beheerderstoegang",
           "description": "Leer dit toegangsmiddel in met beheerdersrechten. Daarmee kan op Tuya-sloten mogelijk ook het beheermenu worden geopend om gebruikers toe te voegen of te verwijderen. Laat uit voor gewone gebruikers."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Optioneel label voor deze toegang, onafhankelijk van de persoon."
         }
       }
     },
@@ -504,6 +512,10 @@
         "admin": {
           "name": "Beheerderstoegang",
           "description": "Leer dit toegangsmiddel in met beheerdersrechten. Daarmee kan op Tuya-sloten mogelijk ook het beheermenu worden geopend om gebruikers toe te voegen of te verwijderen. Laat uit voor gewone gebruikers."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Optioneel label voor deze toegang, onafhankelijk van de persoon."
         }
       }
     },
@@ -562,6 +574,10 @@
         "expiry_time": {
           "name": "Eindtijd",
           "description": "Eindtijd in de ingestelde tijdzone van Home Assistant. Moet na de begintijd liggen; een expliciete UTC-offset of Z wordt gerespecteerd."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "Optionele HA-persoon die bij deze tijdelijke pincode hoort."
         }
       }
     },
@@ -661,7 +677,7 @@
     },
     "pause_credential": {
       "name": "Toegangsmiddel pauzeren",
-      "description": "Pauzeer een ondersteunde vingerafdruk of kaart zonder adminrechten die via deze integratie is ingeschreven met opgeslagen oorspronkelijke instellingen. De einddatum blijft gelijk.",
+      "description": "Pauzeer een ondersteunde pincode, vingerafdruk of kaart zonder adminrechten, met bij inschrijving vastgelegde geldigheid. De oorspronkelijke einddatum blijft behouden.",
       "fields": {
         "device_id": {
           "name": "Slot",
@@ -670,12 +686,16 @@
         "credential_id": {
           "name": "ID van toegangsmiddel",
           "description": "De credential_id uit list_credentials of de sensor Toegangsmiddelen."
+        },
+        "pin_code": {
+          "name": "Bestaande pincode",
+          "description": "Alleen voor gewone pincodes die HA nog niet onthoudt. Voer eenmalig dezelfde code in (6–10 cijfers); HA bewaart deze lokaal voor pauzeren en hervatten. Een andere code zou de code op het slot wijzigen."
         }
       }
     },
     "resume_credential": {
       "name": "Toegangsmiddel hervatten",
-      "description": "Herstel een gepauzeerde vingerafdruk of kaart naar de opgeslagen oorspronkelijke geldigheid. Verlopen toegangsmiddelen kunnen niet worden hervat.",
+      "description": "Herstel een gepauzeerde pincode, vingerafdruk of kaart naar de oorspronkelijke geldigheid. Verlopen toegang kan niet worden hervat.",
       "fields": {
         "device_id": {
           "name": "Slot",
@@ -684,6 +704,42 @@
         "credential_id": {
           "name": "ID van toegangsmiddel",
           "description": "De credential_id uit list_credentials of de sensor Toegangsmiddelen."
+        },
+        "pin_code": {
+          "name": "Bestaande pincode",
+          "description": "Alleen voor gewone pincodes die HA nog niet onthoudt. Voer eenmalig dezelfde code in (6–10 cijfers); HA bewaart deze lokaal voor pauzeren en hervatten. Een andere code zou de code op het slot wijzigen."
+        }
+      }
+    },
+    "list_access": {
+      "name": "Toegang tonen",
+      "description": "Toon de beheerlijst zonder pincodes of technische eigenschappen.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Optionele apparaat-ID of adres van het slot. Standaard het eerste ingestelde slot."
+        }
+      }
+    },
+    "update_access": {
+      "name": "Toegangsgegevens bewerken",
+      "description": "Wijzig label en persoon zonder de inschrijving op het slot te wijzigen.",
+      "fields": {
+        "device_id": {
+          "name": "Slot",
+          "description": "Het slot waarbij deze toegang hoort."
+        },
+        "access_id": {
+          "name": "Toegangs-ID",
+          "description": "De id uit list_access."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Een label voor deze toegang, onafhankelijk van de persoon."
+        },
+        "person": {
+          "name": "Persoon",
+          "description": "Optionele HA-persoon. Een lege waarde verwijdert de koppeling aan een persoon."
         }
       }
     }
@@ -822,13 +878,31 @@
       "message": "Pauzeren en hervatten zijn nog niet getest voor dit type toegangsmiddel en product."
     },
     "credential_policy_unknown": {
-      "message": "De oorspronkelijke geldigheid en slotidentiteit zijn onbekend, of dit betreft adminrechten of beperkt gebruik. Alleen ondersteunde vingerafdrukken of kaarten zonder adminrechten met bij inschrijving opgeslagen oorspronkelijke instellingen kunnen worden gepauzeerd."
+      "message": "De oorspronkelijke geldigheid of slotidentiteit is onbekend, of dit is toegang met adminrechten of beperkt gebruik. Pauzeren vereist een ondersteunde inschrijving zonder adminrechten waarvan het oorspronkelijke beleid bekend is."
     },
     "credential_expired": {
       "message": "De oorspronkelijke geldigheid is verlopen. Hervatten kan deze niet verlengen."
     },
     "credential_pause_unconfirmed": {
       "message": "Het slot heeft de gevraagde wijziging voor dit toegangsmiddel niet bevestigd. De pauzestatus is onbekend; probeer opnieuw wanneer het slot bereikbaar is."
+    },
+    "credential_pin_required": {
+      "message": "HA onthoudt deze pincode nog niet. Voer de bestaande code van 6–10 cijfers eenmalig in; HA bewaart deze voor pauzeren en hervatten."
+    },
+    "credential_pin_not_applicable": {
+      "message": "Vul alleen een pincode in bij toegang van het type pincode."
+    },
+    "credential_pin_mismatch": {
+      "message": "De ingevoerde code wijkt af van de opgeslagen pincode. Laat het veld leeg om de opgeslagen code te gebruiken; pauzeren en hervatten wijzigen de code niet."
+    },
+    "access_metadata_invalid": {
+      "message": "Gebruik een label van 1–100 tekens en een bestaande HA-persoon, of laat de persoon leeg."
+    },
+    "credential_delete_unconfirmed": {
+      "message": "Het slot heeft de verwijdering niet bevestigd. De registratie blijft behouden; controleer het slot voordat je opnieuw probeert."
+    },
+    "sync_unconfirmed": {
+      "message": "Het slot heeft geen inventaris teruggestuurd. De vorige registraties blijven behouden."
     }
   }
 }

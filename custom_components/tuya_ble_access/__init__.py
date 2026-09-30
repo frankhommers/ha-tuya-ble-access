@@ -62,11 +62,13 @@ def _platforms_for_devices(profiles: dict[str, dict]) -> list[Platform]:
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     from .services import async_register_services
+    from .panel import async_setup_panel
 
     # Migrate legacy per-device entries (v1) to hub model (v2)
     await _async_migrate_legacy_entries(hass)
 
     await async_register_services(hass)
+    await async_setup_panel(hass)
     return True
 
 

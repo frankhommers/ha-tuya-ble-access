@@ -177,3 +177,7 @@ informed the framing and crypto layers.
 ## License
 
 This project is available under the [MIT License](LICENSE).
+
+## Access manager
+
+Version 0.4.0 adds a **Tuya BLE Access** sidebar page for administrators: manage labels and people, enroll access, and pause/resume from one list. Ordinary PINs are remembered locally. See [credential management](docs/credential-management.md) for supported devices and migration details.

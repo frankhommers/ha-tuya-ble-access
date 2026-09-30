@@ -50,6 +50,33 @@ def test_member_scope_never_inferred_from_credential():
     assert result == bytes([0, 0, 0, 7, 255]) + commands.build_validity_permanent() + bytes(3)
 
 
+@pytest.mark.parametrize('pin', ['001234', '0123456789'])
+def test_pin_schedule_preserves_digits_and_encodes_length(pin):
+    original = policy(1)
+    before = copy.deepcopy(original)
+    for paused in [True, False]:
+        payload = schedule.build_schedule_probe(original, paused=paused, pin_code=pin)
+        assert payload[:5] == bytes([1, 0, 0, 7, 9])
+        assert payload[5:13] == bytes.fromhex(original['validity_hex'])[:8]
+        assert payload[13:22] == (schedule.NO_WEEKDAYS if paused else bytes.fromhex(original['validity_hex'])[8:])
+        assert payload[22:] == bytes([0, len(pin)]) + bytes(int(d) for d in pin)
+    assert original == before
+
+
+@pytest.mark.parametrize('pin', ['', '12345', '12345678901', '１２３４５６', '12345x', 123456])
+def test_invalid_pin_content_is_rejected_without_echo(pin):
+    with pytest.raises(ValueError) as err:
+        schedule.build_schedule_probe(policy(1), paused=True, pin_code=pin)
+    if pin:
+        assert str(pin) not in str(err.value)
+
+
+@pytest.mark.parametrize('kind', [2, 3])
+def test_card_and_fingerprint_never_receive_pin_content(kind):
+    with pytest.raises(ValueError):
+        schedule.build_schedule_probe(policy(kind), paused=True, pin_code='001234')
+
+
 @pytest.mark.parametrize('offset,value', [(0, 3), (1, 252), (2, 1), (3, 8), (4, 255), (6, 1)])
 def test_mismatched_or_incomplete_enrollment_is_unknown(offset, value):
     raw = bytearray([2, 255, 0, 7, 9, 0, 0]); raw[offset] = value

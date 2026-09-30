@@ -400,10 +400,11 @@ class TuyaBLECredentialsSensor(TuyaBLELockEntity, SensorEntity):
                 "credential_id": c.credential_id,
                 "pause_state": c.pause_state,
                 "requested_paused": c.requested_paused,
+                "pin_remembered": c.pin_code is not None,
                 "hw_id": c.hw_id,
                 "type": _CRED_TYPE_LABEL.get(c.cred_type, str(c.cred_type)),
                 "name": c.name,
-                "person": getattr(member, "person_entity_id", None),
+                "person": store.credential_person(c),
                 "member": getattr(member, "name", None),
             })
         registered.sort(key=lambda e: (e["type"], e["hw_id"]))

@@ -1,8 +1,6 @@
-"""DP3 schedule builders; card/fingerprint pause/restore verified on ba2qk177.
+"""DP3 schedule builders; individual pause/restore verified on ba2qk177."""
 
-Ordinary PINs and member-wide suspension remain research candidates.
-"""
-
+import re
 import struct
 
 
@@ -26,15 +24,21 @@ def policy_from_enrollment(payload, dp_id, response):
             "validity_hex": payload[5:22].hex(), "uses": payload[22]}
 
 
-def build_schedule_probe(policy, *, paused, scope="credential"):
+def build_schedule_probe(policy, *, paused, scope="credential", pin_code=None):
     """Build a candidate DP3 write with an exact restore policy supplied.
 
 Member policy must come from a separately recorded member schedule, never
-from one credential's schedule. PIN updates with zero PIN length still need
-physical verification; they are not established by the panel's PIN editor.
+from one credential's schedule. Ordinary PIN edits require the existing PIN;
+zero-length PIN probes were rejected by the tested firmware. The low-level
+builder still permits them for policy inspection and historical research.
 """
     if type(paused) is not bool or scope not in ("credential", "member"):
         raise ValueError("Invalid schedule operation")
+    if pin_code is not None and (
+        scope != "credential" or policy.get("cred_type") != 1
+        or not isinstance(pin_code, str) or not re.fullmatch(r"[0-9]{6,10}", pin_code)
+    ):
+        raise ValueError("PIN content requires an ordinary PIN and 6-10 ASCII digits")
     member = policy.get("member_id")
     if type(member) is not int or not 1 <= member <= 100:
         raise ValueError("Unknown device member")
@@ -56,7 +60,8 @@ physical verification; they are not established by the panel's PIN editor.
     if (policy.get("source") != "ha_enrollment" or type(kind) is not int
             or kind not in (1, 2, 3) or type(slot) is not int or not 0 <= slot <= 254):
         raise ValueError("A confirmed credential identity is required")
-    return bytes([kind, 0, 0, member, slot]) + validity + bytes(2)
+    digits = bytes(int(digit) for digit in pin_code) if pin_code is not None else b""
+    return bytes([kind, 0, 0, member, slot]) + validity + bytes([0, len(digits)]) + digits
 
 
 def schedule_probe_succeeded(response, payload):

@@ -19,7 +19,7 @@ _GENERIC_CRED_LABEL = {1: "PIN", 2: "Card", 3: "Fingerprint", 4: "Face"}
 
 class CredentialStore:
     def __init__(self, hass):
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY, private=True, atomic_writes=True)
         self._data = None
 
     async def async_load(self) -> None:
@@ -90,6 +90,35 @@ class CredentialStore:
     def get_credentials_for_member(self, member_id: int) -> List[CredentialRecord]:
         return [CredentialRecord(**c) for c in self._data["credentials"].values() if c["member_id"] == member_id]
 
+    def credential_person(self, record) -> str | None:
+        if record.person_override:
+            return record.person_entity_id
+        member = self.get_member(record.member_id)
+        return member.person_entity_id if member else None
+
+    async def async_update_access(self, lock_id, access_id, changes):
+        """Edit presentation metadata without replacing enrollment or slot identity."""
+        for bucket in ("credentials", "temp_passwords"):
+            current = self._data[bucket].get(access_id)
+            if current is not None and current["lock_entry_id"] == lock_id:
+                break
+        else:
+            raise KeyError("Access not found on this lock")
+        updated = dict(current)
+        if "name" in changes:
+            updated["name"] = changes["name"].strip()
+        if "person" in changes:
+            updated["person_entity_id"] = changes["person"] or None
+            if bucket == "credentials":
+                updated["person_override"] = True
+        self._data[bucket][access_id] = updated
+        try:
+            await self.async_save()
+        except BaseException:
+            if self._data[bucket].get(access_id) is updated:
+                self._data[bucket][access_id] = current
+            raise
+
     def find_credential(self, lock_entry_id: str, cred_type: int, hw_id: int) -> Optional[CredentialRecord]:
         """Look up a credential by lock + credential type + hardware id.
 
@@ -105,7 +134,7 @@ class CredentialStore:
                 return CredentialRecord(**c)
         return None
 
-    async def async_add_credential(self, member_id, lock_entry_id, cred_type, hw_id, name, *, device_policy=None) -> CredentialRecord:
+    async def async_add_credential(self, member_id, lock_entry_id, cred_type, hw_id, name, *, device_policy=None, pin_code=None, person_entity_id=None, person_override=False) -> CredentialRecord:
         # One credential per physical slot: (lock, cred_type, hw_id) maps to a
         # single hardware slot on the lock, so re-enrolling that slot must
         # replace the old entry rather than stack a duplicate. Without this the
@@ -124,6 +153,9 @@ class CredentialStore:
             name=name,
             created_at=time.time(),
             device_policy=device_policy,
+            pin_code=pin_code if cred_type == 1 else None,
+            person_entity_id=person_entity_id,
+            person_override=person_override,
         )
         self._data["credentials"][cid] = rec.__dict__
         await self.async_save()
@@ -252,11 +284,12 @@ class CredentialStore:
             raise
         return True
 
-    async def async_add_temp_password(self, lock_entry_id, name, effective, expiry, hw_id=None) -> TempPasswordRecord:
+    async def async_add_temp_password(self, lock_entry_id, name, effective, expiry, hw_id=None, *, person_entity_id=None) -> TempPasswordRecord:
         if hw_id is not None and (type(hw_id) is not int or not 0 <= hw_id <= 254):
             raise ValueError("Invalid temporary PIN hardware ID")
         pid = str(uuid.uuid4())
         rec = TempPasswordRecord(
+            person_entity_id=person_entity_id,
             password_id=pid,
             lock_entry_id=lock_entry_id,
             name=name,
@@ -321,7 +354,7 @@ class CredentialStore:
                 self._data["temp_passwords"][record.password_id] = current
             raise
 
-    async def async_set_credential_pause_state(self, record, state, requested_paused):
+    async def async_set_credential_pause_state(self, record, state, requested_paused, *, pin_code=None):
         """Persist intent without resurrecting a deleted or replaced credential."""
         current = self._data["credentials"].get(record.credential_id)
         if current is None or any(current.get(k) != getattr(record, k) for k in
@@ -330,6 +363,10 @@ class CredentialStore:
         if state not in ("active", "paused", "unknown") or type(requested_paused) is not bool:
             raise ValueError("Invalid pause state")
         updated = {**current, "pause_state": state, "requested_paused": requested_paused}
+        if pin_code is not None:
+            if record.cred_type != 1:
+                raise ValueError("Only ordinary PIN credentials can retain PIN content")
+            updated["pin_code"] = pin_code
         self._data["credentials"][record.credential_id] = updated
         try:
             await self.async_save()

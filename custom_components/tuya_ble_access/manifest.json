@@ -1,7 +1,7 @@
 {
   "domain": "tuya_ble_access",
   "name": "Tuya BLE Access",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "codeowners": [
     "@frankhommers"
   ],
@@ -11,7 +11,8 @@
   "iot_class": "local_push",
   "integration_type": "hub",
   "dependencies": [
-    "bluetooth_adapters"
+    "bluetooth_adapters",
+    "panel_custom"
   ],
   "requirements": [
     "cryptography>=41.0.0",

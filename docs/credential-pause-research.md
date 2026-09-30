@@ -1,6 +1,6 @@
 # Temporary credential suspension
 
-Research date: 2026-09-27; physical verification completed 2026-09-28.
+Research date: 2026-09-27; physical follow-up through 2026-09-30.
 The initial source investigation sent no lock commands. The subsequent
 authorized test changed only a dedicated temporary test PIN's validity.
 
@@ -93,6 +93,44 @@ methods/members. Reboot and day-rollover persistence remain untested. Ordinary
 PINs and member-wide suspension still require separate physical verification.
 Both test credentials are restored. Further physical testing was deferred by
 the user after moving the Keybox indoors; no reset or new pairing is needed.
+
+## Follow-up: ordinary PIN pause ineffective (2026-09-30)
+
+A dedicated non-admin ordinary test PIN was enrolled through HA, which captured
+its exact device identity and original schedule. The user confirmed baseline
+access. An individual DP3 no-weekdays update preserved both dates and sent zero
+PIN length, as in the verified card/fingerprint strategy.
+
+The matching seven-byte device response ended in `0000`, rather than the
+`00ff` success response observed for cards and fingerprints. The user then
+confirmed that the same PIN **still opened the Keybox**. This establishes that
+this no-PIN-content schedule update did not pause this ordinary PIN; it does
+not establish the cause or whether another supported update format can work.
+Ordinary PIN pause remains disabled. Do not relax acknowledgement validation
+or infer support from the successful temporary-PIN, card or fingerprint tests.
+
+The exact original schedule was subsequently sent back, again with zero PIN
+length. Its matching response also ended in `0000`, so restoration was not
+confirmed by the known success acknowledgement. The last physical observation
+is that the original PIN still opens; no deletion or re-enrollment was performed.
+After this restore attempt, the user reported the Keybox announcing
+"Operation Failed". No further hardware commands were sent.
+
+Reinspection of panel module 1063 confirms its ordinary-PIN edit includes a
+nonzero PIN length and the PIN digits; module 692 encodes each digit as one
+byte (`0` through `9`), not ASCII. The next prepared candidate retains the
+same credential identity, dates and PIN, changing only the recurrence. It
+requires the user to supply the identical test PIN. Pause and restore payload
+construction were checked offline, including leading-zero PINs and rejection
+of empty input. The user then entered the same test PIN and submitted the
+no-weekdays update. This returned the matching `00ff` success response; the
+user heard success and confirmed that the same PIN no longer opened the lock.
+The original schedule was subsequently submitted with the same PIN and returned
+the matching `00ff` success response. The user confirmed the same PIN opened
+again, completing the pause/rejection/restore/access cycle without re-enrollment.
+PIN digits are not included in this research record. Ordinary-PIN pause requires
+PIN content on this tested firmware; the current implementation work adds that
+input to the HA actions. Member-wide suspension remains unverified.
 
 ## Result from the actual product panel
 

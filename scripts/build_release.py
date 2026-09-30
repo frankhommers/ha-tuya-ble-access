@@ -20,10 +20,10 @@ def main():
     output.mkdir(exist_ok=True)
     target = output / f"tuya_ble_access-{version}.zip"
     files = sorted(p for p in COMPONENT.rglob("*")
-                   if p.is_file() and (p.suffix in {".py", ".json", ".png", ".yaml"}
+                   if p.is_file() and (p.suffix in {".py", ".json", ".png", ".yaml", ".js"}
                                       or p == COMPONENT / "LICENSE")
                    and "__pycache__" not in p.parts)
-    required = {"LICENSE", "__init__.py", "manifest.json", "services.yaml", "strings.json", "translations/en.json", "translations/nl.json"}
+    required = {"LICENSE", "__init__.py", "manifest.json", "services.yaml", "strings.json", "translations/en.json", "translations/nl.json", "access-panel.js", "panel.py"}
     assert required <= {p.relative_to(COMPONENT).as_posix() for p in files}
     with ZipFile(target, "w", compression=ZIP_DEFLATED) as archive:
         for path in files:

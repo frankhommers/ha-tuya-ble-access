@@ -303,6 +303,9 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                             if temp:
                                 credential_name = temp.name
                                 password_id = temp.password_id
+                                person_eid = getattr(temp, "person_entity_id", None)
+                                person = self.hass.states.get(person_eid) if person_eid else None
+                                member_name = person.name if person else None
                         except Exception as exc:
                             _LOGGER.debug("Temporary PIN lookup failed: %s", exc)
                     if cred_type is not None:
@@ -318,6 +321,11 @@ class TuyaBLELockCoordinator(DataUpdateCoordinator):
                             if member:
                                 member_name = member.name
                                 person_eid = getattr(member, "person_entity_id", None)
+                            credential = cred_store.find_credential(self._mac, cred_type, user_id)
+                            if credential and getattr(credential, "person_override", False):
+                                person_eid = credential.person_entity_id
+                                person = self.hass.states.get(person_eid) if person_eid else None
+                                member_name = person.name if person else None
                         except Exception as exc:
                             _LOGGER.debug("Member lookup failed: %s", exc)
                     initiator = None

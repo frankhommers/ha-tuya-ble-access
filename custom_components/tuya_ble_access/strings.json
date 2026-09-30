@@ -417,7 +417,7 @@
     },
     "add_pin": {
       "name": "Add PIN code",
-      "description": "Enroll a PIN code on one or more Tuya BLE locks for a specific member. The PIN will be stored in the lock's memory and associated with the member.",
+      "description": "Enroll a PIN code on a Tuya BLE lock for a specific member. Home Assistant remembers the code locally for later pause and resume.",
       "fields": {
         "device_id": {
           "name": "Lock device",
@@ -434,6 +434,10 @@
         "admin": {
           "name": "Admin credential",
           "description": "Whether this is an admin credential."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Optional label for this access, independent of its person."
         }
       }
     },
@@ -456,6 +460,10 @@
         "admin": {
           "name": "Admin credential",
           "description": "Enrol as an administrator credential instead of a normal user. On Tuya locks an admin credential may also open the lock's own management menu (adding/removing users), not just unlock. Leave off for normal users."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Optional label for this access, independent of its person."
         }
       }
     },
@@ -504,6 +512,10 @@
         "admin": {
           "name": "Admin credential",
           "description": "Enrol as an administrator credential instead of a normal user. On Tuya locks an admin credential may also open the lock's own management menu (adding/removing users), not just unlock. Leave off for normal users."
+        },
+        "name": {
+          "name": "Label",
+          "description": "Optional label for this access, independent of its person."
         }
       }
     },
@@ -562,6 +574,10 @@
         "expiry_time": {
           "name": "End time",
           "description": "End time in the configured Home Assistant time zone. Must follow the start time; an explicit UTC offset or Z is respected."
+        },
+        "person": {
+          "name": "Person",
+          "description": "Optional HA person associated with this temporary PIN."
         }
       }
     },
@@ -661,7 +677,7 @@
     },
     "pause_credential": {
       "name": "Pause credential",
-      "description": "Pause a supported non-admin fingerprint or card enrolled by this integration with a recorded original policy. The original expiry stays unchanged.",
+      "description": "Pause a supported non-admin PIN, fingerprint or card with an original policy recorded at enrollment. The original expiry stays unchanged.",
       "fields": {
         "device_id": {
           "name": "Lock device",
@@ -670,12 +686,16 @@
         "credential_id": {
           "name": "Credential ID",
           "description": "The credential_id from list_credentials or the Credentials sensor."
+        },
+        "pin_code": {
+          "name": "Existing PIN",
+          "description": "Only for ordinary PINs not yet remembered by HA. Enter the same 6–10 digit code once; HA remembers it locally for pause and resume. A different code would change the code on the lock."
         }
       }
     },
     "resume_credential": {
       "name": "Resume credential",
-      "description": "Restore a paused fingerprint or card to its recorded original validity. Expired credentials cannot be resumed.",
+      "description": "Restore a paused PIN, fingerprint or card to its recorded original validity. Expired credentials cannot be resumed.",
       "fields": {
         "device_id": {
           "name": "Lock device",
@@ -684,6 +704,42 @@
         "credential_id": {
           "name": "Credential ID",
           "description": "The credential_id from list_credentials or the Credentials sensor."
+        },
+        "pin_code": {
+          "name": "Existing PIN",
+          "description": "Only for ordinary PINs not yet remembered by HA. Enter the same 6–10 digit code once; HA remembers it locally for pause and resume. A different code would change the code on the lock."
+        }
+      }
+    },
+    "list_access": {
+      "name": "List access",
+      "description": "Return the access manager list without PIN digits or protocol properties.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "Optional lock device ID or address. Defaults to the first configured lock."
+        }
+      }
+    },
+    "update_access": {
+      "name": "Edit access details",
+      "description": "Edit the label and person without changing the credential on the lock.",
+      "fields": {
+        "device_id": {
+          "name": "Lock device",
+          "description": "The lock this access belongs to."
+        },
+        "access_id": {
+          "name": "Access ID",
+          "description": "The id returned by list_access."
+        },
+        "name": {
+          "name": "Label",
+          "description": "A label for this access, independent of its person."
+        },
+        "person": {
+          "name": "Person",
+          "description": "Optional HA person. An empty value removes the person association."
         }
       }
     }
@@ -822,13 +878,31 @@
       "message": "Pause/resume has not been verified for this credential type and product."
     },
     "credential_policy_unknown": {
-      "message": "Original validity and device identity are unknown, or this is admin/limited-use access. Only supported non-admin fingerprints or cards with an original policy recorded at enrollment can be paused."
+      "message": "Original validity and device identity are unknown, or this is admin/limited-use access. Pausing requires supported non-admin access with its original policy recorded at enrollment."
     },
     "credential_expired": {
       "message": "The original validity has expired. Resuming cannot extend it."
     },
     "credential_pause_unconfirmed": {
       "message": "The lock did not confirm the requested change for this credential. Its pause state is unknown; retry when reachable."
+    },
+    "credential_pin_required": {
+      "message": "HA does not remember this PIN yet. Enter its existing 6–10 digit code once; HA saves it for pause and resume."
+    },
+    "credential_pin_not_applicable": {
+      "message": "Only supply PIN digits for an ordinary PIN credential."
+    },
+    "credential_pin_mismatch": {
+      "message": "The supplied code differs from the remembered PIN. Leave the field empty to use the remembered code; pause and resume do not replace it."
+    },
+    "access_metadata_invalid": {
+      "message": "Use a label of 1–100 characters and an existing HA person, or leave the person empty."
+    },
+    "credential_delete_unconfirmed": {
+      "message": "The lock did not confirm deletion. The registration is retained; check the lock before retrying."
+    },
+    "sync_unconfirmed": {
+      "message": "The lock did not return an inventory. Previous registrations are retained."
     }
   }
 }
