@@ -134,7 +134,7 @@ class CredentialStore:
                 return CredentialRecord(**c)
         return None
 
-    async def async_add_credential(self, member_id, lock_entry_id, cred_type, hw_id, name, *, device_policy=None, pin_code=None, person_entity_id=None, person_override=False) -> CredentialRecord:
+    async def async_add_credential(self, member_id, lock_entry_id, cred_type, hw_id, name, *, device_policy=None, pin_code=None, person_entity_id=None, person_override=False, finger=None) -> CredentialRecord:
         # One credential per physical slot: (lock, cred_type, hw_id) maps to a
         # single hardware slot on the lock, so re-enrolling that slot must
         # replace the old entry rather than stack a duplicate. Without this the
@@ -156,6 +156,7 @@ class CredentialStore:
             pin_code=pin_code if cred_type == 1 else None,
             person_entity_id=person_entity_id,
             person_override=person_override,
+            finger=finger if cred_type == 3 else None,
         )
         self._data["credentials"][cid] = rec.__dict__
         await self.async_save()

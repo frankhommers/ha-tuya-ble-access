@@ -3,6 +3,10 @@ const WORDS = {
   nl: {
     title: 'Toegang', subtitle: 'Beheer wie dit slot kan openen.', lock: 'Slot', add: 'Toegang toevoegen', refresh: 'Vernieuwen',
     label: 'Label', person: 'Persoon', type: 'Type', status: 'Status', validity: 'Geldigheid', actions: 'Acties',
+    finger: 'Vinger', chooseFinger: 'Kies een vinger',
+    right_thumb: 'Rechterduim', right_index: 'Rechterwijsvinger', right_middle: 'Rechtermiddelvinger', right_ring: 'Rechterringvinger', right_pinky: 'Rechterpink',
+    left_thumb: 'Linkerduim', left_index: 'Linkerwijsvinger', left_middle: 'Linkermiddelvinger', left_ring: 'Linkerringvinger', left_pinky: 'Linkerpink',
+    fingerBusy: 'Vingerafdruk inschrijven… leg dezelfde vinger telkens op de sensor en til hem weer op wanneer het slot daarom vraagt.',
     pin: 'Pincode', temporary_pin: 'Tijdelijke pincode', card: 'Kaart', fingerprint: 'Vingerafdruk', other: 'Overig',
     active: 'Actief', paused: 'Gepauzeerd', unknown: 'Onzeker', expired: 'Verlopen', scheduled: 'Gepland', removed: 'Verwijderd', replaced: 'Vervangen',
     pause: 'Pauzeren', resume: 'Hervatten', edit: 'Bewerken', save: 'Opslaan', cancel: 'Annuleren', none: 'Geen persoon',
@@ -23,6 +27,10 @@ const WORDS = {
   en: {
     title: 'Access', subtitle: 'Manage who can open this lock.', lock: 'Lock', add: 'Add access', refresh: 'Refresh',
     label: 'Label', person: 'Person', type: 'Type', status: 'Status', validity: 'Validity', actions: 'Actions',
+    finger: 'Finger', chooseFinger: 'Choose a finger',
+    right_thumb: 'Right thumb', right_index: 'Right index', right_middle: 'Right middle', right_ring: 'Right ring', right_pinky: 'Right pinky',
+    left_thumb: 'Left thumb', left_index: 'Left index', left_middle: 'Left middle', left_ring: 'Left ring', left_pinky: 'Left pinky',
+    fingerBusy: 'Enrolling fingerprint… place the same finger on the sensor and lift it again whenever the lock prompts you.',
     pin: 'PIN', temporary_pin: 'Temporary PIN', card: 'Card', fingerprint: 'Fingerprint', other: 'Other',
     active: 'Active', paused: 'Paused', unknown: 'Uncertain', expired: 'Expired', scheduled: 'Scheduled', removed: 'Removed', replaced: 'Replaced',
     pause: 'Pause', resume: 'Resume', edit: 'Edit', save: 'Save', cancel: 'Cancel', none: 'No person',
@@ -42,6 +50,8 @@ const WORDS = {
   },
 };
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const FINGERS = ['right','left'].flatMap(side=>['thumb','index','middle','ring','pinky'].map(finger=>`${side}_${finger}`));
 
 class TuyaAccessPanel extends HTMLElement {
   constructor() {
@@ -97,9 +107,9 @@ class TuyaAccessPanel extends HTMLElement {
     </style><header><button id="menu" aria-label="Menu">☰</button><b>Tuya BLE Access</b></header><main><h1>${esc(t.title)}</h1><p>${esc(t.subtitle)}</p>
     ${!this._hass?.user?.is_admin ? `<p>${esc(t.admin)}</p>` : `
       <div class="toolbar"><label>${esc(t.lock)}<select id="lock" ${disabled?'disabled':''}>${this._locks.map(l=>`<option value="${esc(l.id)}" ${l.id===this._lock?'selected':''}>${esc(l.name)}</option>`).join('')}</select></label><button id="refresh" ${disabled?'disabled':''}>${esc(t.refresh)}</button><button id="add" class="primary" ${disabled||!this._lock?'disabled':''}>＋ ${esc(t.add)}</button></div>
-      <div role="status" aria-live="polite">${this._busy?`<div class="notice">${esc(t.busy)}</div>`:this._loading?`<div class="notice">${esc(t.loading)}</div>`:this._message?`<div class="notice">${esc(this._message)}</div>`:''}</div>
+      <div role="status" aria-live="polite">${this._busy?`<div class="notice">${esc(this._busyService==='add_fingerprint'?t.fingerBusy:t.busy)}</div>`:this._loading?`<div class="notice">${esc(t.loading)}</div>`:this._message?`<div class="notice">${esc(this._message)}</div>`:''}</div>
       ${this._error?`<div role="alert" class="notice error">${esc(this._error)}</div>`:''}
-      <div class="table">${this._items.length?`<table><thead><tr>${['label','person','type','status','validity','actions'].map(k=>`<th scope="col">${esc(t[k])}</th>`).join('')}</tr></thead><tbody>${this._items.map((r,i)=>`<tr><td>${esc(r.name)}</td><td data-title="${esc(t.person)}">${esc(this.personName(r.person))}</td><td data-title="${esc(t.type)}">${esc(t[r.kind])}${r.kind==='pin'?`<small>${esc(r.needs_pin?t.missingPin:t.remembered)}</small>`:''}</td><td data-title="${esc(t.status)}"><span class="badge ${esc(r.status)}">${esc(t[r.status]||r.status)}</span></td><td data-title="${esc(t.validity)}">${r.effective_ts==null?esc(t.unknownValidity):`${esc(this.date(r.effective_ts))}<small>${esc(t.until)} ${esc(this.date(r.expiry_ts))}</small>`}</td><td class="actions"><button data-edit="${i}" ${disabled?'disabled':''}>${esc(t.edit)}</button>${r.can_pause?`<button data-pause="${i}" ${disabled?'disabled':''}>${esc(t.pause)}</button>`:''}${r.can_resume?`<button data-resume="${i}" ${disabled?'disabled':''}>${esc(t.resume)}</button>`:''}${r.can_delete?`<button data-delete="${i}" ${disabled?'disabled':''}>${esc(t.delete)}</button>`:''}<div class="muted">${esc(this.reason(r))}</div></td></tr>`).join('')}</tbody></table>`:`<div class="empty">${esc(this._locks.length?t.empty:t.noLocks)}</div>`}</div>`}</main>`;
+      <div class="table">${this._items.length?`<table><thead><tr>${['label','person','type','status','validity','actions'].map(k=>`<th scope="col">${esc(t[k])}</th>`).join('')}</tr></thead><tbody>${this._items.map((r,i)=>`<tr><td>${esc(r.name)}</td><td data-title="${esc(t.person)}">${esc(this.personName(r.person))}</td><td data-title="${esc(t.type)}">${esc(t[r.kind])}${r.kind==='fingerprint'&&r.finger?`<small>${esc(t[r.finger]||r.finger)}</small>`:''}${r.kind==='pin'?`<small>${esc(r.needs_pin?t.missingPin:t.remembered)}</small>`:''}</td><td data-title="${esc(t.status)}"><span class="badge ${esc(r.status)}">${esc(t[r.status]||r.status)}</span></td><td data-title="${esc(t.validity)}">${r.effective_ts==null?esc(t.unknownValidity):`${esc(this.date(r.effective_ts))}<small>${esc(t.until)} ${esc(this.date(r.expiry_ts))}</small>`}</td><td class="actions"><button data-edit="${i}" ${disabled?'disabled':''}>${esc(t.edit)}</button>${r.can_pause?`<button data-pause="${i}" ${disabled?'disabled':''}>${esc(t.pause)}</button>`:''}${r.can_resume?`<button data-resume="${i}" ${disabled?'disabled':''}>${esc(t.resume)}</button>`:''}${r.can_delete?`<button data-delete="${i}" ${disabled?'disabled':''}>${esc(t.delete)}</button>`:''}<div class="muted">${esc(this.reason(r))}</div></td></tr>`).join('')}</tbody></table>`:`<div class="empty">${esc(this._locks.length?t.empty:t.noLocks)}</div>`}</div>`}</main>`;
     this.shadowRoot.querySelector('#menu').onclick=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));
     if (!this._hass?.user?.is_admin) return;
     this.shadowRoot.querySelector('#refresh').onclick=()=>{this._error='';this.refresh();};
@@ -116,6 +126,7 @@ class TuyaAccessPanel extends HTMLElement {
     const metadata=action==='edit'||action==='add';
     d.innerHTML=`<h2>${esc(action==='add'?t.add:action==='edit'?t.editTitle:t[action])}</h2><p>${esc(action==='add'?t.enrollHelp:action==='edit'?t.editHelp:action==='delete'?t.deleteHelp:t.existingHelp)}</p><form>
       ${action==='add'?`<label>${esc(t.type)}<select name="kind">${['pin','temporary_pin','card','fingerprint'].map(k=>`<option value="${k}">${esc(t[k])}</option>`).join('')}</select></label>`:''}
+      ${action==='add'?`<div id="finger-fields" hidden><label>${esc(t.finger)}<select name="finger" disabled><option value="">${esc(t.chooseFinger)}</option>${FINGERS.map(f=>`<option value="${f}">${esc(t[f])}</option>`).join('')}</select></label></div>`:''}
       ${metadata?`<label>${esc(t.label)}<input name="name" maxlength="100" value="${esc(row?.name||'')}" ${action==='edit'?'required':''}></label><label>${esc(t.person)}<select name="person">${this.peopleOptions(row?.person)}</select></label>`:''}
       ${['add','pause','resume'].includes(action)?`<div id="pin-fields"><label>${esc(action==='add'?t.pinInput:t.existingPin)}<input name="pin_code" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{6,10}" minlength="6" maxlength="10" required></label><p class="secret-note">${esc(t.pinHelp)}</p></div>`:''}
       ${action==='add'?`<div id="dates" hidden><label>${esc(t.start)}<input name="effective_time" type="datetime-local"></label><label>${esc(t.end)}<input name="expiry_time" type="datetime-local"></label></div>`:''}
@@ -126,6 +137,10 @@ class TuyaAccessPanel extends HTMLElement {
     if(action==='add') d.querySelector('[name=kind]').onchange=e=>{
       const pin=['pin','temporary_pin'].includes(e.target.value), temp=e.target.value==='temporary_pin';
       d.querySelector('#pin-fields').hidden=!pin; d.querySelector('[name=pin_code]').required=pin;
+      const fingerprint=e.target.value==='fingerprint';
+      d.querySelector('#finger-fields').hidden=!fingerprint;
+      d.querySelector('[name=finger]').disabled=!fingerprint;
+      d.querySelector('[name=finger]').required=fingerprint;
       d.querySelector('#dates').hidden=!temp;
       for(const field of ['effective_time','expiry_time']) d.querySelector(`[name=${field}]`).required=temp;
     };
@@ -135,8 +150,9 @@ class TuyaAccessPanel extends HTMLElement {
       else if(action==='delete') this.run('delete_credential',{device_id:this._lock,credential_id:row.id},false,t.done);
       else if(action==='add') {
         const kind=values.kind, data={device_id:this._lock};
-        data.name=values.name.trim() || (values.person?this.personName(values.person)+' ':'')+t[kind];
+        data.name=values.name.trim() || (values.person?this.personName(values.person)+' ':'')+(kind==='fingerprint'?t[values.finger]:t[kind]);
         if(values.person) data.person=values.person;
+        if(kind==='fingerprint') data.finger=values.finger;
         if(['pin','temporary_pin'].includes(kind)) data.pin_code=values.pin_code;
         if(kind==='temporary_pin') {
           data.effective_time=new Date(values.effective_time).toISOString();data.expiry_time=new Date(values.expiry_time).toISOString();
@@ -153,7 +169,7 @@ class TuyaAccessPanel extends HTMLElement {
   }
   async run(service,data,response,message) {
     if(this._busy) return;
-    this._busy=true; this._error='';this._message='';this.render();
+    this._busy=true; this._busyService=service; this._error='';this._message='';this.render();
     try { await this.call(service,data,response);this._message=message; }
     catch(error) { this._error=error.message||this.t.failed; }
     finally { delete data.pin_code;this._busy=false;await this.refresh(); }

@@ -50,6 +50,7 @@ class CredentialRecord:
     pin_code: Optional[str] = field(default=None, repr=False)
     person_entity_id: Optional[str] = None
     person_override: bool = False
+    finger: Optional[str] = None
 
 
 @dataclass

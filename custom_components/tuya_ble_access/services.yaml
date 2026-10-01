@@ -97,7 +97,7 @@ add_fingerprint:
           domain: person
     finger:
       name: Finger
-      description: Which finger is being enrolled — stored as part of the credential name so you know which one to delete later.
+      description: Which finger is being enrolled. Saved separately from the label and shown in the access list.
       required: false
       selector:
         select:

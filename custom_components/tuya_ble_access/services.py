@@ -486,6 +486,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                             cred_type=CRED_FINGERPRINT,
                             hw_id=resp.get("hw_id", 0),
                             name=(call.data.get("name") or "").strip() or cred_name,
+                            finger=(call.data.get("finger") or "").strip() or None,
                             person_entity_id=person_eid, person_override=True,
                             device_policy=policy_from_enrollment(payload, dp_create, dp),
                         )
@@ -495,7 +496,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
                         raise HomeAssistantError(
                             translation_domain=DOMAIN,
                             translation_key="fingerprint_enrollment_failed",
-                            translation_placeholders={'details': str(resp)},
+                            translation_placeholders={'code': f"0x{resp['result_code']:02X}"},
                         )
 
             raise HomeAssistantError(

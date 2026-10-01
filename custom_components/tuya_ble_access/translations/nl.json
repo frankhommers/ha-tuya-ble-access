@@ -455,7 +455,7 @@
         },
         "finger": {
           "name": "Vinger",
-          "description": "Welke vinger wordt ingeleerd. Dit wordt opgeslagen in de naam van het toegangsmiddel, zodat je deze later kunt herkennen."
+          "description": "Welke vinger wordt ingeleerd. Wordt apart van het label opgeslagen en in de toegangslijst getoond."
         },
         "admin": {
           "name": "Beheerderstoegang",
@@ -800,7 +800,7 @@
       "message": "Het inleren van de pincode is mislukt: {details}"
     },
     "fingerprint_enrollment_failed": {
-      "message": "Het inleren van de vingerafdruk is mislukt: {details}"
+      "message": "Het slot kon de vingerafdruk niet inschrijven (code {code}). Probeer opnieuw en volg de aanwijzingen van het slot."
     },
     "card_enrollment_failed": {
       "message": "Het inleren van de kaart is mislukt: {details}"

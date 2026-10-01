@@ -29,6 +29,7 @@ def access_items(store, lock_id, profile):
         items.append({
             "id": rec.credential_id, "kind": {1: "pin", 2: "card", 3: "fingerprint"}.get(rec.cred_type, "other"),
             "name": rec.name, "person": store.credential_person(rec), "status": status,
+            "finger": rec.finger,
             "effective_ts": start, "expiry_ts": end, "pause_reason": reason,
             "can_pause": reason is None and status != "paused",
             "can_resume": reason is None and status in ("paused", "unknown"),

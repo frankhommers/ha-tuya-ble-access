@@ -455,7 +455,7 @@
         },
         "finger": {
           "name": "Finger",
-          "description": "Which finger is being enrolled — stored as part of the credential name so you know which one to delete later."
+          "description": "Which finger is being enrolled. Saved separately from the label and shown in the access list."
         },
         "admin": {
           "name": "Admin credential",
@@ -800,7 +800,7 @@
       "message": "PIN enrollment failed: {details}"
     },
     "fingerprint_enrollment_failed": {
-      "message": "Fingerprint enrollment failed: {details}"
+      "message": "The lock could not complete fingerprint enrollment (code {code}). Try again and follow the prompts on the lock."
     },
     "card_enrollment_failed": {
       "message": "Card enrollment failed: {details}"

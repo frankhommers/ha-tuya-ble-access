@@ -18,6 +18,6 @@ async def async_setup_panel(hass):
     await panel_custom.async_register_panel(
         hass, frontend_url_path="tuya-ble-access", webcomponent_name="tuya-access-panel",
         sidebar_title="Tuya BLE Access", sidebar_icon="mdi:lock-smart",
-        module_url=f"/{DOMAIN}/access-panel.js?v=0.4.0", embed_iframe=False, require_admin=True,
+        module_url=f"/{DOMAIN}/access-panel.js?v=0.4.1", embed_iframe=False, require_admin=True,
     )
     hass.data[marker] = True
